@@ -44,7 +44,7 @@ function DataBar({ value, max, colorClass = "bg-blue-600" }) {
     );
 }
 
-export default function Dashboard({ rawData, onAddMore, onReset, isAdmin }) {
+export default function Dashboard({ rawData, currentDepartment, onAddMore, onReset, isAdmin }) {
     const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'drivers', 'clients', 'comparison'
     const [selectedMonth, setSelectedMonth] = useState('all');
     const [selectedWeek, setSelectedWeek] = useState('all');
@@ -178,7 +178,17 @@ export default function Dashboard({ rawData, onAddMore, onReset, isAdmin }) {
             {/* Header Area */}
             <div className="shrink-0 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl text-slate-900 font-bold tracking-tight">Panel de Control MG TRANSPORT</h1>
+                    <h1 className="text-2xl text-slate-900 font-bold tracking-tight flex items-center gap-3">
+                        Panel de Control MG TRANSPORT
+                        {currentDepartment !== 'all' && (
+                            <span className={`text-sm px-3 py-1 rounded-full border ${currentDepartment === 'Intermodal'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-red-50 text-red-700 border-red-200'
+                                }`}>
+                                {currentDepartment === 'Intermodal' ? '🚢 Intermodal' : '🇪🇸 Nacional'}
+                            </span>
+                        )}
+                    </h1>
                     <p className="text-sm text-slate-500 font-medium">
                         {selectedMonth === 'all' && selectedWeek === 'all' ? 'Mostrando todos los periodos' :
                             selectedWeek !== 'all' ? `Mostrando: ${selectedWeek}` :

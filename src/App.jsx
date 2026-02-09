@@ -83,7 +83,10 @@ function App() {
     return localStorage.getItem('auth_isAuthenticated') === 'true';
   });
   const [isAdmin, setIsAdmin] = useState(() => {
-    return localStorage.getItem('auth_isAdmin') === 'true';
+    return localStorage.getItem('auth_role') === 'admin';
+  });
+  const [currentDepartment, setCurrentDepartment] = useState(() => {
+    return localStorage.getItem('auth_department') || 'all';
   });
 
   // Data State
@@ -106,9 +109,14 @@ function App() {
   const fetchData = async () => {
     try {
       // setIsLoadingData(true); // Don't block UI on background updates
-      const { data: records, error } = await supabase
-        .from('billing_records')
-        .select('*');
+      let query = supabase.from('billing_records').select('*');
+
+      // Apply Department Filter if not 'all'
+      if (currentDepartment !== 'all') {
+        query = query.eq('department', currentDepartment);
+      }
+
+      const { data: records, error } = await query;
 
       if (error) {
         throw error;
@@ -131,6 +139,8 @@ function App() {
     fetchData();
 
     // Realtime Subscription
+    // Note: Supabase Realtime row-level filtering logic is complex.
+    // Simplest strategy: Listen to all changes on the table, but re-fetch with our query filter.
     const channel = supabase
       .channel('billing-control-calm')
       .on(
@@ -146,36 +156,29 @@ function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentDepartment]);
 
   const [view, setView] = useState('dashboard'); // Default to dashboard
 
   // Handle Login Logic
-  const handleLogin = (password) => {
-    const adminPass = import.meta.env.VITE_ADMIN_PASSWORD;
-    const userPass = import.meta.env.VITE_APP_PASSWORD;
+  const handleLogin = ({ role, department }) => {
+    setIsAuthenticated(true);
+    setIsAdmin(role === 'admin');
+    setCurrentDepartment(department);
 
-    if (password === adminPass) {
-      setIsAuthenticated(true);
-      setIsAdmin(true);
-      localStorage.setItem('auth_isAuthenticated', 'true');
-      localStorage.setItem('auth_isAdmin', 'true');
-      return true;
-    } else if (password === userPass) {
-      setIsAuthenticated(true);
-      setIsAdmin(false);
-      localStorage.setItem('auth_isAuthenticated', 'true');
-      localStorage.setItem('auth_isAdmin', 'false');
-      return true;
-    }
-    return false;
+    localStorage.setItem('auth_isAuthenticated', 'true');
+    localStorage.setItem('auth_role', role);
+    localStorage.setItem('auth_department', department);
+    return true;
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsAdmin(false);
+    setCurrentDepartment('all');
     localStorage.removeItem('auth_isAuthenticated');
-    localStorage.removeItem('auth_isAdmin');
+    localStorage.removeItem('auth_role');
+    localStorage.removeItem('auth_department');
     setView('dashboard');
   };
 
@@ -493,7 +496,7 @@ function App() {
           </div>
         ) : (
           <div className="flex-1 overflow-auto">
-            {view === 'dashboard' && <Dashboard rawData={data} />}
+            {view === 'dashboard' && <Dashboard rawData={data} currentDepartment={currentDepartment} />}
             {view === 'data' && <DataManagement data={data} onDeleteMonth={handleDeleteMonth} onDeleteWeek={handleDeleteWeek} onResetAll={handleReset} isAdmin={isAdmin} />}
             {view === 'upload' && isAdmin && (
               <div className="p-8 max-w-4xl mx-auto">
@@ -503,7 +506,7 @@ function App() {
                     <p className="text-slate-500 mt-2">Sube el archivo de facturación para actualizar el dashboard.</p>
                   </div>
                   <div className="p-8 bg-slate-50/50">
-                    <Upload onDataLoaded={handleDataLoaded} />
+                    <Upload onDataLoaded={handleDataLoaded} currentDepartment={currentDepartment} />
 
                     <div className="mt-8 pt-8 border-t border-slate-200">
                       <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">

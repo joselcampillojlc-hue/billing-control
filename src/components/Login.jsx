@@ -12,12 +12,28 @@ export default function Login({ onLogin }) {
         setLoading(true);
         setError(false);
 
-        // Small artifical delay for "security feel"
+        const adminPass = import.meta.env.VITE_ADMIN_PASSWORD;
+        const userPass = import.meta.env.VITE_APP_PASSWORD; // Legacy/Fallback
+        const intermodalPass = import.meta.env.VITE_INTERMODAL_PASSWORD;
+        const nacionalPass = import.meta.env.VITE_NACIONAL_PASSWORD;
+
+        // Small artificial delay for "security feel"
         setTimeout(() => {
-            const success = onLogin(password);
-            if (!success) {
+            if (password === adminPass) {
+                onLogin({ role: 'admin', department: 'all' });
+            } else if (password === intermodalPass) {
+                onLogin({ role: 'user', department: 'Intermodal' });
+            } else if (password === nacionalPass) {
+                onLogin({ role: 'user', department: 'Nacional' });
+            } else if (password === userPass) {
+                // Fallback for old shared password, treat as read-only or default to Intermodal if needed
+                // For now, let's map it to All (View Only) or remove it. 
+                // Let's assume userPass is deprecated or maps to 'all' view-only.
+                onLogin({ role: 'user', department: 'all' });
+            } else {
                 setError(true);
                 setLoading(false);
+                setTimeout(() => setError(false), 2000); // Clear error after 2 seconds
             }
         }, 600);
     };
