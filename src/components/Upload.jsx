@@ -22,15 +22,14 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
         setIsProcessing(true);
         try {
             const rawData = await parseExcel(file);
-            const { raw, summary } = processBillingData(rawData);
 
-            // Inject Department Tag
-            const taggedRaw = raw.map(row => ({
+            // Inject Department Tag into RAW data (preserving Excel headers)
+            const taggedRaw = rawData.map(row => ({
                 ...row,
                 department: selectedDepartment
             }));
 
-            onDataLoaded(taggedRaw, summary);
+            onDataLoaded(taggedRaw);
         } catch (error) {
             console.error("Error processing file:", error);
             alert(`Error al procesar el archivo: ${error.message || 'Formato inválido'}. \n\nAsegúrate de usar la Plantilla correcta.`);
@@ -87,8 +86,8 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
                         <button
                             onClick={() => setSelectedDepartment('Intermodal')}
                             className={`flex-1 py-3 px-4 rounded-xl border-2 transition-all font-bold flex items-center justify-center gap-2 ${selectedDepartment === 'Intermodal'
-                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm scale-102'
-                                    : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                                ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm scale-102'
+                                : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
                                 }`}
                         >
                             <span>🚢</span> Intermodal
@@ -96,8 +95,8 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
                         <button
                             onClick={() => setSelectedDepartment('Nacional')}
                             className={`flex-1 py-3 px-4 rounded-xl border-2 transition-all font-bold flex items-center justify-center gap-2 ${selectedDepartment === 'Nacional'
-                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm scale-102'
-                                    : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                                ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm scale-102'
+                                : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
                                 }`}
                         >
                             <span>🇪🇸</span> Nacional
