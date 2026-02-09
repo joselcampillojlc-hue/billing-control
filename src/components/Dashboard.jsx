@@ -181,11 +181,11 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                     <h1 className="text-2xl text-slate-900 font-bold tracking-tight flex items-center gap-3">
                         Panel de Control MG TRANSPORT
                         {currentDepartment !== 'all' && (
-                            <span className={`text-sm px-3 py-1 rounded-full border ${currentDepartment === 'Intermodal'
+                            <span className={`text-sm px-3 py-1 rounded-full border flex items-center gap-2 ${currentDepartment === 'Intermodal'
                                 ? 'bg-blue-50 text-blue-700 border-blue-200'
                                 : 'bg-red-50 text-red-700 border-red-200'
                                 }`}>
-                                {currentDepartment === 'Intermodal' ? '🚢 Intermodal' : '🇪🇸 Nacional'}
+                                {currentDepartment === 'Intermodal' ? '🚢 Intermodal' : <><Truck size={14} /> Nacional</>}
                             </span>
                         )}
                     </h1>
@@ -209,7 +209,7 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                             >
                                 <option value="all">🌍 Global</option>
                                 <option value="Intermodal">🚢 Intermodal</option>
-                                <option value="Nacional">🇪🇸 Nacional</option>
+                                <option value="Nacional">🚛 Nacional</option>
                             </select>
                         </div>
                     )}
