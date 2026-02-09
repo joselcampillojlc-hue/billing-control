@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
-import { UploadCloud } from 'lucide-react';
+import { UploadCloud, FileDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { parseExcel } from '../utils/billing';
+import * as XLSX from 'xlsx';
 
 export default function Upload({ onDataLoaded }) {
     const handleFile = async (file) => {
@@ -34,6 +35,22 @@ export default function Upload({ onDataLoaded }) {
         }
     };
 
+    const handleDownloadTemplate = (e) => {
+        e.stopPropagation();
+        try {
+            const ws = XLSX.utils.aoa_to_sheet([
+                ['F.Carga', 'Conductor', 'Nomb.Cliente', 'Euros', 'Kms'],
+                ['01/01/2024', 'Juan Pérez', 'Cliente A', 150.50, 120]
+            ]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+            XLSX.writeFile(wb, "plantilla_facturacion.xlsx");
+        } catch (err) {
+            console.error("Error downloading template:", err);
+            alert("Error al generar la plantilla.");
+        }
+    };
+
     return (
         <div
             className="card flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-slate-700 hover:border-slate-500 transition-colors cursor-pointer"
@@ -51,13 +68,29 @@ export default function Upload({ onDataLoaded }) {
             <input
                 type="file"
                 id="file-upload"
+                className="hidden"
                 accept=".xlsx, .xls"
                 onChange={handleInputChange}
             />
 
-            <button className="btn btn-primary">
-                Seleccionar Archivo
-            </button>
+            <div className="flex gap-4">
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        document.getElementById('file-upload').click();
+                    }}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-all shadow-lg shadow-indigo-500/30 flex items-center gap-2"
+                >
+                    Seleccionar Archivo
+                </button>
+                <button
+                    onClick={handleDownloadTemplate}
+                    className="px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-xl transition-all border border-slate-200 shadow-sm flex items-center gap-2"
+                >
+                    <FileDown size={20} />
+                    Descargar Plantilla
+                </button>
+            </div>
 
             <p className="text-xs text-muted mt-8">
                 Formatos soportados: .xlsx, .xls

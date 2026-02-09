@@ -228,6 +228,7 @@ function App() {
 
       let successCount = 0;
       let failCount = 0;
+      let lastError = null;
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
@@ -243,6 +244,7 @@ function App() {
           successCount += chunk.length;
         } catch (e) {
           console.error("Batch failed:", e);
+          lastError = e.message || JSON.stringify(e);
           failCount += chunk.length;
         }
       }
@@ -254,7 +256,8 @@ function App() {
       } else if (failCount === 0 && errors.length > 0) {
         showNotification(`⚠️ PARCIAL: ${successCount} subidos. ${errors.length} errores.`, 'warning', 0);
       } else {
-        showNotification(`❌ PROBLEMAS: ${successCount} subidos. ${failCount} fallados.`, 'error', 0);
+        // Show the actual error message to the user
+        showNotification(`❌ ERROR (${lastError}): ${successCount} subidos. ${failCount} fallados.`, 'error', 0);
       }
 
     } catch (error) {
