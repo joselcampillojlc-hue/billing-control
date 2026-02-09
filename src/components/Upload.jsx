@@ -33,7 +33,7 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
             onDataLoaded(taggedRaw, summary);
         } catch (error) {
             console.error("Error processing file:", error);
-            alert("Error al procesar el archivo. Asegúrate de que es un Excel válido.");
+            alert(`Error al procesar el archivo: ${error.message || 'Formato inválido'}. \n\nAsegúrate de usar la Plantilla correcta.`);
         } finally {
             setIsProcessing(false);
         }
@@ -62,7 +62,7 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
         try {
             const ws = XLSX.utils.aoa_to_sheet([
                 ['F.Carga', 'Conductor', 'Nomb.Cliente', 'Euros', 'Kms'],
-                ['01/01/2024', 'Juan Pérez', 'Cliente A', 150.50, 120]
+                ['01/01/2026', 'Juan Pérez', 'Cliente Ejemplo S.L.', 150.50, 120]
             ]);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
@@ -77,28 +77,48 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
         <div className="w-full max-w-2xl mx-auto">
 
             {/* Department Selector for Admins */}
-            {currentDepartment === 'all' && (
-                <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Departamento de destino:</label>
+            {currentDepartment === 'all' ? (
+                <div className="mb-6 bg-white p-6 rounded-xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-top-2">
+                    <label className="block text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                        <UploadIcon size={16} className="text-indigo-600" />
+                        Elige el departamento de destino:
+                    </label>
                     <div className="flex gap-4">
                         <button
                             onClick={() => setSelectedDepartment('Intermodal')}
-                            className={`flex-1 py-2 px-4 rounded-lg border-2 transition-all font-medium ${selectedDepartment === 'Intermodal'
-                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                                    : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                            className={`flex-1 py-3 px-4 rounded-xl border-2 transition-all font-bold flex items-center justify-center gap-2 ${selectedDepartment === 'Intermodal'
+                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm scale-102'
+                                    : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
                                 }`}
                         >
-                            🚢 Intermodal
+                            <span>🚢</span> Intermodal
                         </button>
                         <button
                             onClick={() => setSelectedDepartment('Nacional')}
-                            className={`flex-1 py-2 px-4 rounded-lg border-2 transition-all font-medium ${selectedDepartment === 'Nacional'
-                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                                    : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                            className={`flex-1 py-3 px-4 rounded-xl border-2 transition-all font-bold flex items-center justify-center gap-2 ${selectedDepartment === 'Nacional'
+                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm scale-102'
+                                    : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
                                 }`}
                         >
-                            🇪🇸 Nacional
+                            <span>🇪🇸</span> Nacional
                         </button>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-2 text-center">
+                        Estás subiendo datos como <b>Administrador</b>.
+                    </p>
+                </div>
+            ) : (
+                <div className="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                    <div className="p-2 bg-blue-100 rounded-full text-blue-600">
+                        {currentDepartment === 'Intermodal' ? '🚢' : '🇪🇸'}
+                    </div>
+                    <div>
+                        <p className="text-sm font-medium text-blue-900">
+                            Modo Restringido: <b>{currentDepartment}</b>
+                        </p>
+                        <p className="text-xs text-blue-700">
+                            Los archivos que subas se asignarán automáticamente a este departamento.
+                        </p>
                     </div>
                 </div>
             )}
@@ -108,7 +128,7 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={onDrop}
                 className={`
-            border-3 border-dashed rounded-3xl p-10 text-center transition-all duration-300 cursor-pointer
+            border-3 border-dashed rounded-3xl p-10 text-center transition-all duration-300 cursor-pointer relative overflow-hidden
             ${isDragging
                         ? 'border-indigo-500 bg-indigo-50 scale-102 shadow-xl'
                         : 'border-slate-300 hover:border-indigo-400 hover:bg-slate-50'
@@ -124,10 +144,10 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
                     disabled={isProcessing}
                 />
 
-                <label htmlFor="file-upload" className="cursor-pointer block">
+                <label htmlFor="file-upload" className="cursor-pointer block relative z-10">
                     <div className={`
-                w-20 h-20 mx-auto rounded-2xl flex items-center justify-center mb-6 transition-transform duration-500
-                ${isDragging ? 'bg-indigo-600 rotate-12' : 'bg-indigo-100'}
+                w-20 h-20 mx-auto rounded-2xl flex items-center justify-center mb-6 transition-transform duration-500 shadow-md
+                ${isDragging ? 'bg-indigo-600 rotate-12 scale-110' : 'bg-indigo-100 text-indigo-600'}
             `}>
                         {isProcessing ? (
                             <Loader2 size={40} className="text-white animate-spin" />
@@ -136,25 +156,24 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
                         )}
                     </div>
 
-                    <h3 className="text-xl font-bold text-slate-800 mb-2">
+                    <h3 className="text-2xl font-bold text-slate-800 mb-2">
                         {isProcessing ? 'Procesando archivo...' : 'Arrastra tu Excel aquí'}
                     </h3>
-                    <p className="text-slate-500 mb-6">
-                        o haz clic para buscarlo en tu ordenador
+                    <p className="text-slate-500 mb-6 font-medium">
+                        o haz clic para explorar carpetas
                     </p>
 
-                    {currentDepartment !== 'all' && (
-                        <div className="inline-block px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider mb-4">
-                            Subiendo a: {currentDepartment === 'Intermodal' ? '🚢 Intermodal' : '🇪🇸 Nacional'}
-                        </div>
-                    )}
+                    <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-6 transition-colors ${selectedDepartment === 'Intermodal' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                        Destino: {selectedDepartment}
+                    </div>
 
-                    <div className="flex gap-4 justify-center">
+                    <div className="flex gap-4 justify-center mt-2">
                         <button
                             onClick={handleDownloadTemplate}
-                            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium transition-colors"
+                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-600 rounded-xl text-sm font-bold shadow-sm transition-all"
                         >
-                            <FileDown size={16} />
+                            <FileDown size={18} className="text-slate-400" />
                             Descargar Plantilla
                         </button>
                     </div>
