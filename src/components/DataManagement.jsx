@@ -3,7 +3,7 @@ import { Trash2, Calendar, Database, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onResetAll }) {
+export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onResetAll, isAdmin }) {
 
     // Group data by Month
     const months = useMemo(() => {
@@ -98,13 +98,15 @@ export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onRe
                                     <p className="font-bold text-slate-700 capitalize">{month}</p>
                                     <p className="text-xs text-slate-400">{count} registros</p>
                                 </div>
-                                <button
-                                    onClick={() => onDeleteMonth(month)}
-                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 placeholder:opacity-100 focus:opacity-100"
-                                    title="Eliminar este mes"
-                                >
-                                    <Trash2 size={18} />
-                                </button>
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => onDeleteMonth(month)}
+                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 placeholder:opacity-100 focus:opacity-100"
+                                        title="Eliminar este mes"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -123,13 +125,15 @@ export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onRe
                                     <p className="font-bold text-slate-700">{week}</p>
                                     <p className="text-xs text-slate-400">{count} registros</p>
                                 </div>
-                                <button
-                                    onClick={() => onDeleteWeek(week)}
-                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 placeholder:opacity-100 focus:opacity-100"
-                                    title="Eliminar esta semana"
-                                >
-                                    <Trash2 size={18} />
-                                </button>
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => onDeleteWeek(week)}
+                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 placeholder:opacity-100 focus:opacity-100"
+                                        title="Eliminar esta semana"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -137,23 +141,25 @@ export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onRe
             </div>
 
             {/* Danger Zone */}
-            <div className="mt-10 p-6 rounded-xl border border-red-200 bg-red-50 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-red-100 rounded-full text-red-600">
-                        <AlertCircle size={24} />
+            {isAdmin && (
+                <div className="mt-10 p-6 rounded-xl border border-red-200 bg-red-50 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-red-100 rounded-full text-red-600">
+                            <AlertCircle size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-red-800">Zona de Peligro</h3>
+                            <p className="text-sm text-red-600">Esta acción borrará todos los datos almacenados permanentemente.</p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="font-bold text-red-800">Zona de Peligro</h3>
-                        <p className="text-sm text-red-600">Esta acción borrará todos los datos almacenados permanentemente.</p>
-                    </div>
+                    <button
+                        onClick={onResetAll}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+                    >
+                        <Trash2 size={18} /> Borrar Todo
+                    </button>
                 </div>
-                <button
-                    onClick={onResetAll}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-2"
-                >
-                    <Trash2 size={18} /> Borrar Todo
-                </button>
-            </div>
+            )}
         </div>
     );
 }

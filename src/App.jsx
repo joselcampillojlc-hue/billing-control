@@ -494,7 +494,7 @@ function App() {
         ) : (
           <div className="flex-1 overflow-auto">
             {view === 'dashboard' && <Dashboard rawData={data} />}
-            {view === 'data' && <DataManagement rawData={data} onDeleteMonth={handleDeleteMonth} onDeleteWeek={handleDeleteWeek} isAdmin={isAdmin} />}
+            {view === 'data' && <DataManagement data={data} onDeleteMonth={handleDeleteMonth} onDeleteWeek={handleDeleteWeek} onResetAll={handleReset} isAdmin={isAdmin} />}
             {view === 'upload' && isAdmin && (
               <div className="p-8 max-w-4xl mx-auto">
                 <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
