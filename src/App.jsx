@@ -37,6 +37,47 @@ function SidebarItem({ icon: Icon, label, active, onClick, variant = 'default', 
   );
 }
 
+// Validation Modal Component
+function ValidationErrorsModal({ errors, onClose }) {
+  if (!errors || errors.length === 0) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="p-6 bg-red-50 border-b border-red-100 flex items-center gap-4">
+          <div className="p-3 bg-red-100 rounded-full text-red-600">
+            <Shield size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-red-900">Errores de Validación</h3>
+            <p className="text-red-700 text-sm">Se encontraron {errors.length} filas con problemas que NO se han subido.</p>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+          <div className="space-y-2">
+            {errors.map((err, idx) => (
+              <div key={idx} className="bg-white p-3 rounded-lg border border-red-100 shadow-sm flex gap-3 text-sm">
+                <span className="font-mono font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">Fila {err.row}</span>
+                <span className="text-slate-700">{err.reason}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-4 border-t bg-white flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors font-medium"
+          >
+            Entendido, cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -103,6 +144,7 @@ function App() {
 
   // Notification State
   const [notification, setNotification] = useState(null);
+  const [validationErrors, setValidationErrors] = useState([]); // Store validation errors
 
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
@@ -113,21 +155,52 @@ function App() {
   };
 
   const handleDataLoaded = async (newData) => {
-    showNotification("Procesando y subiendo datos... Por favor espera.", 'info');
+    showNotification("Validando y subiendo datos...", 'info');
+    setValidationErrors([]); // Clear previous errors
 
-    // Sanitize data: Firestore does not like 'undefined' values.
-    const sanitizedData = newData.map(row => {
+    // 1. Validate Data
+    const validRows = [];
+    const errors = [];
+
+    newData.forEach((row, index) => {
+      const rowNum = index + 2; // Excel header is row 1, so data starts at 2
+
+      // Check for empty object
+      if (Object.keys(row).length === 0) return;
+
+      // Required Fields
+      if (!row['F.Carga']) {
+        errors.push({ row: rowNum, reason: "Falta la fecha (Columna 'F.Carga')" });
+        return;
+      }
+      if (row['Euros'] === undefined || row['Euros'] === null) {
+        errors.push({ row: rowNum, reason: "Falta el importe (Columna 'Euros')" });
+        return;
+      }
+
+      // Sanitize
       const cleanRow = {};
       Object.keys(row).forEach(key => {
         cleanRow[key] = row[key] === undefined ? null : row[key];
       });
-      return cleanRow;
+      validRows.push(cleanRow);
     });
 
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      // We continue to upload valid rows, but warn user
+    }
+
+    if (validRows.length === 0) {
+      showNotification("No se encontraron filas válidas para subir.", 'error');
+      return;
+    }
+
+    // 2. Upload Valid Data
     const batchSize = 450;
     const chunks = [];
-    for (let i = 0; i < sanitizedData.length; i += batchSize) {
-      chunks.push(sanitizedData.slice(i, i + batchSize));
+    for (let i = 0; i < validRows.length; i += batchSize) {
+      chunks.push(validRows.slice(i, i + batchSize));
     }
 
     let successCount = 0;
@@ -152,10 +225,12 @@ function App() {
     // View update is automatic via onSnapshot but we switch view
     setView('dashboard');
 
-    if (failCount === 0) {
+    if (failCount === 0 && errors.length === 0) {
       showNotification(`✅ ÉXITO: Se han cargado ${successCount} registros correctamente.`, 'success');
+    } else if (failCount === 0 && errors.length > 0) {
+      showNotification(`⚠️ PARCIAL: Subidos ${successCount} registros. ${errors.length} filas tenían errores (ver detalles).`, 'warning');
     } else {
-      showNotification(`⚠️ ATENCIÓN: Se cargaron ${successCount} registros, pero ${failCount} fallaron. Revisa la consola o intenta subir de nuevo el archivo.`, 'error');
+      showNotification(`❌ PROBLEMAS: Subidos ${successCount}, Fallados ${failCount}.`, 'error');
     }
   };
 
@@ -308,16 +383,24 @@ function App() {
   return (
     <div className="min-h-screen flex relative font-sans selection:bg-indigo-100 selection:text-indigo-900">
 
+      {/* Validation Modal */}
+      <ValidationErrorsModal errors={validationErrors} onClose={() => setValidationErrors([])} />
+
       {/* Notification Toast */}
       {notification && (
         <div className={clsx(
           "fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-2xl border transition-all duration-300 animate-in slide-in-from-top-4",
           notification.type === 'success' ? "bg-emerald-500 text-white border-emerald-600" :
             notification.type === 'error' ? "bg-red-500 text-white border-red-600" :
-              "bg-blue-500 text-white border-blue-600"
+              notification.type === 'warning' ? "bg-amber-500 text-white border-amber-600" :
+                "bg-blue-500 text-white border-blue-600"
         )}>
           <div className="flex items-center gap-3">
-            <div className="font-bold text-lg">{notification.type === 'success' ? '✓' : notification.type === 'error' ? '✕' : 'ℹ'}</div>
+            <div className="font-bold text-lg">
+              {notification.type === 'success' ? '✓' :
+                notification.type === 'error' ? '✕' :
+                  notification.type === 'warning' ? '⚠️' : 'ℹ'}
+            </div>
             <p className="font-medium">{notification.message}</p>
             <button onClick={() => setNotification(null)} className="ml-4 hover:bg-white/20 p-1 rounded">✕</button>
           </div>
