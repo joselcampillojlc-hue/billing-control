@@ -49,11 +49,24 @@ export const processBillingData = (data) => {
     if (typeof rawDate === 'number') {
       dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
     } else if (typeof rawDate === 'string') {
-      // Try parsing DD/MM/YYYY
-      // Simple regex or date-fns parse if needed.
-      // Assuming user locale format, but let's be safe.
-      // Let's assume standard excel parsers might give strings like '4/5/2024'.
-      dateObj = new Date(rawDate);
+      // Check if it's a numeric string (Excel serial stored as text)
+      if (/^\d+$/.test(rawDate)) {
+        const serial = parseInt(rawDate, 10);
+        dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
+      } else {
+        // Try parsing standard string date
+        dateObj = new Date(rawDate);
+
+        // If invalid, try DD/MM/YYYY manually if needed, but new Date() usually handles ISO. 
+        // Spanish format DD/MM/YYYY might need manual parsing if new Date() fails.
+        if (isNaN(dateObj) && rawDate.includes('/')) {
+          const part = rawDate.split('/');
+          if (part.length === 3) {
+            // Assume DD/MM/YYYY
+            dateObj = new Date(part[2], part[1] - 1, part[0]);
+          }
+        }
+      }
     }
 
     if (!isValid(dateObj)) dateObj = new Date(); // Fallback or error
