@@ -201,6 +201,21 @@ function App() {
           errors.push({ row: rowNum, reason: "Falta el importe (Columna 'Euros')" });
           return;
         }
+        if (!row['Conductor']) {
+          errors.push({ row: rowNum, reason: "Falta el Conductor (Columna 'Conductor')" });
+          return;
+        }
+        if (!row['Nomb.Cliente']) {
+          errors.push({ row: rowNum, reason: "Falta el Cliente (Columna 'Nomb.Cliente')" });
+          return;
+        }
+
+        // Heuristic: Check for swapped columns (Company in Driver field)
+        const conductorName = String(row['Conductor']).toUpperCase();
+        if (conductorName.includes(' S.L') || conductorName.includes(' S.A') || conductorName.includes('LOGISTICA') || conductorName.includes('TRANSPORT')) {
+          errors.push({ row: rowNum, reason: `Error: La columna 'Conductor' contiene una empresa (${row['Conductor']}). ¿Es posible que las columnas estén intercambiadas?` });
+          return;
+        }
 
         // Sanitize
         const cleanRow = {};
