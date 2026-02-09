@@ -39,35 +39,36 @@ function SidebarItem({ icon: Icon, label, active, onClick, variant = 'default', 
 
 function App() {
   // Auth State
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('auth_isAuthenticated') === 'true';
+  });
+  const [isAdmin, setIsAdmin] = useState(() => {
+    return localStorage.getItem('auth_isAdmin') === 'true';
+  });
 
   // Data State - Sync with Firestore
   const [data, setData] = useState([]);
 
   // Subscribe to Firestore updates
   useEffect(() => {
-    // We only fetch data if user is authenticated (security rules might block otherwise, though open for now)
-    // To make it simple, we listen always or after login. Let's listen always for simplicity as auth is client-side for now
-
-    // Import Firestore functions dynamically or assume they are available at module level if we import them at top
-    // TO-DO: Ensure imports are added at top of file
+    if (!isAuthenticated) return; // Only listen if authenticated to save reads/bandwidth
 
     const q = query(collection(db, "billing_records")); // Using 'billing_records' collection
 
+    // ... rest of useEffect
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const records = [];
       querySnapshot.forEach((doc) => {
         records.push({ ...doc.data(), id: doc.id });
       });
-      console.log("Fetched records:", records.length);
+      // console.log("Fetched records:", records.length);
       setData(records);
     }, (error) => {
       console.error("Error fetching data:", error);
     });
 
     return () => unsubscribe();
-  }, []); // Run once on mount
+  }, [isAuthenticated]); // Depend on isAuthenticated
 
   const [view, setView] = useState('dashboard'); // Default to dashboard
 
@@ -79,10 +80,14 @@ function App() {
     if (password === adminPass) {
       setIsAuthenticated(true);
       setIsAdmin(true);
+      localStorage.setItem('auth_isAuthenticated', 'true');
+      localStorage.setItem('auth_isAdmin', 'true');
       return true;
     } else if (password === userPass) {
       setIsAuthenticated(true);
       setIsAdmin(false);
+      localStorage.setItem('auth_isAuthenticated', 'true');
+      localStorage.setItem('auth_isAdmin', 'false');
       return true;
     }
     return false;
@@ -91,36 +96,45 @@ function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsAdmin(false);
+    localStorage.removeItem('auth_isAuthenticated');
+    localStorage.removeItem('auth_isAdmin');
     setView('dashboard');
   };
 
   const handleDataLoaded = async (newData) => {
-    // Instead of local state set, we write to Firestore
-    // Using batch for efficiency if many rows, but firestore batch is limited to 500 ops.
-    // For simplicity, let's chunk it or just loop for now. 
-    // Given the "Upload" probably passes an array.
+    // Sanitize data: Firestore does not like 'undefined' values.
+    const sanitizedData = newData.map(row => {
+      const cleanRow = {};
+      Object.keys(row).forEach(key => {
+        cleanRow[key] = row[key] === undefined ? null : row[key];
+      });
+      return cleanRow;
+    });
 
     const batchSize = 450;
     const chunks = [];
-    for (let i = 0; i < newData.length; i += batchSize) {
-      chunks.push(newData.slice(i, i + batchSize));
+    for (let i = 0; i < sanitizedData.length; i += batchSize) {
+      chunks.push(sanitizedData.slice(i, i + batchSize));
     }
 
     try {
+      let count = 0;
       for (const chunk of chunks) {
         const batch = writeBatch(db);
         chunk.forEach((row) => {
           const docRef = doc(collection(db, "billing_records"));
-          batch.set(docRef, row); // row data
+          batch.set(docRef, row);
         });
         await batch.commit();
+        count += chunk.length;
+        console.log(`Uploaded batch: ${count} / ${sanitizedData.length}`);
       }
-      // View update is automatic via onSnapshot
+
       setView('dashboard');
-      alert(`Se han cargado ${newData.length} registros correctamente.`);
+      alert(`Se han cargado ${sanitizedData.length} registros correctamente.`);
     } catch (e) {
       console.error("Error adding document: ", e);
-      alert("Error al guardar datos: " + e.message);
+      alert("Error al guardar datos: " + (e.message || e));
     }
   };
 
