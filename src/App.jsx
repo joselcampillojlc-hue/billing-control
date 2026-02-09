@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { db } from './firebase'; // Import our db instance
+import { collection, onSnapshot, addDoc, doc, deleteDoc, writeBatch, query, getDocs } from 'firebase/firestore';
 import Upload from './components/Upload';
 import Dashboard from './components/Dashboard';
 import DataManagement from './components/DataManagement';
@@ -40,23 +42,34 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Initialize state from localStorage if available
-  const [data, setData] = useState(() => {
-    const saved = localStorage.getItem('billing_control_data');
-    try {
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      console.error("Failed to parse saved data", e);
-      return [];
-    }
-  });
+  // Data State - Sync with Firestore
+  const [data, setData] = useState([]);
 
-  const [view, setView] = useState('dashboard'); // Default to dashboard if logged in
-
-  // Persist data whenever it changes
+  // Subscribe to Firestore updates
   useEffect(() => {
-    localStorage.setItem('billing_control_data', JSON.stringify(data));
-  }, [data]);
+    // We only fetch data if user is authenticated (security rules might block otherwise, though open for now)
+    // To make it simple, we listen always or after login. Let's listen always for simplicity as auth is client-side for now
+
+    // Import Firestore functions dynamically or assume they are available at module level if we import them at top
+    // TO-DO: Ensure imports are added at top of file
+
+    const q = query(collection(db, "billing_records")); // Using 'billing_records' collection
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const records = [];
+      querySnapshot.forEach((doc) => {
+        records.push({ ...doc.data(), id: doc.id });
+      });
+      console.log("Fetched records:", records.length);
+      setData(records);
+    }, (error) => {
+      console.error("Error fetching data:", error);
+    });
+
+    return () => unsubscribe();
+  }, []); // Run once on mount
+
+  const [view, setView] = useState('dashboard'); // Default to dashboard
 
   // Handle Login Logic
   const handleLogin = (password) => {
@@ -81,21 +94,79 @@ function App() {
     setView('dashboard');
   };
 
-  const handleDataLoaded = (newData) => {
-    setData((prevData) => [...prevData, ...newData]);
-    setView('dashboard');
-  };
+  const handleDataLoaded = async (newData) => {
+    // Instead of local state set, we write to Firestore
+    // Using batch for efficiency if many rows, but firestore batch is limited to 500 ops.
+    // For simplicity, let's chunk it or just loop for now. 
+    // Given the "Upload" probably passes an array.
 
-  const handleReset = () => {
-    if (confirm('¿Estás seguro de que quieres borrar todos los datos? Esta acción es irreversible.')) {
-      setData([]);
-      setView('upload');
+    const batchSize = 450;
+    const chunks = [];
+    for (let i = 0; i < newData.length; i += batchSize) {
+      chunks.push(newData.slice(i, i + batchSize));
+    }
+
+    try {
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach((row) => {
+          const docRef = doc(collection(db, "billing_records"));
+          batch.set(docRef, row); // row data
+        });
+        await batch.commit();
+      }
+      // View update is automatic via onSnapshot
+      setView('dashboard');
+      alert(`Se han cargado ${newData.length} registros correctamente.`);
+    } catch (e) {
+      console.error("Error adding document: ", e);
+      alert("Error al guardar datos: " + e.message);
     }
   };
 
-  const handleDeleteMonth = (monthStr) => {
+  const handleReset = async () => {
+    if (confirm('¿Estás seguro de que quieres borrar todos los datos? Esta acción es irreversible y afectará a todos los usuarios.')) {
+      try {
+        // We need to delete all docs.
+        // First get all docs
+        const q = query(collection(db, "billing_records"));
+        const snapshot = await getDocs(q);
+
+        const batchSize = 450;
+        const chunks = [];
+        let currentChunk = [];
+
+        snapshot.forEach(doc => {
+          currentChunk.push(doc);
+          if (currentChunk.length === batchSize) {
+            chunks.push(currentChunk);
+            currentChunk = [];
+          }
+        });
+        if (currentChunk.length > 0) chunks.push(currentChunk);
+
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach(doc => {
+            batch.delete(doc.ref);
+          });
+          await batch.commit();
+        }
+
+        setView('upload');
+      } catch (e) {
+        console.error("Error clearing data:", e);
+        alert("Error al borrar datos: " + e.message);
+      }
+    }
+  };
+
+  const handleDeleteMonth = async (monthStr) => {
     if (confirm(`¿Borrar todos los datos de ${monthStr}?`)) {
-      setData(prev => prev.filter(row => {
+      // Find docs to delete based on current data state which has IDs
+      // This is efficient enough for small-medium datasets
+
+      const docsToDelete = data.filter(row => {
         let dateObj;
         const rawDate = row['F.Carga'];
         if (typeof rawDate === 'number') {
@@ -103,15 +174,38 @@ function App() {
         } else {
           dateObj = new Date(rawDate);
         }
-        if (isNaN(dateObj)) return true; // Keep invalid dates to be safe
-        return format(dateObj, 'MMM yyyy', { locale: es }) !== monthStr;
-      }));
+        if (isNaN(dateObj)) return false;
+        return format(dateObj, 'MMM yyyy', { locale: es }) === monthStr;
+      });
+
+      if (docsToDelete.length === 0) return;
+
+      try {
+        const batchSize = 450;
+        const chunks = [];
+        for (let i = 0; i < docsToDelete.length; i += batchSize) {
+          chunks.push(docsToDelete.slice(i, i + batchSize));
+        }
+
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach(row => {
+            // row.id comes from our onSnapshot mapping
+            const docRef = doc(db, "billing_records", row.id);
+            batch.delete(docRef);
+          });
+          await batch.commit();
+        }
+      } catch (e) {
+        console.error("Error deleting month:", e);
+        alert("Error al borrar mes: " + e.message);
+      }
     }
   };
 
-  const handleDeleteWeek = (weekStr) => {
+  const handleDeleteWeek = async (weekStr) => {
     if (confirm(`¿Borrar datos de ${weekStr}?`)) {
-      setData(prev => prev.filter(row => {
+      const docsToDelete = data.filter(row => {
         let dateObj;
         const rawDate = row['F.Carga'];
         if (typeof rawDate === 'number') {
@@ -119,7 +213,7 @@ function App() {
         } else {
           dateObj = new Date(rawDate);
         }
-        if (isNaN(dateObj)) return true;
+        if (isNaN(dateObj)) return false;
 
         // Calculate week key to match
         const target = new Date(dateObj.valueOf());
@@ -133,8 +227,30 @@ function App() {
         const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
         const key = `Semana ${weekNum} - ${dateObj.getFullYear()}`;
 
-        return key !== weekStr;
-      }));
+        return key === weekStr;
+      });
+
+      if (docsToDelete.length === 0) return;
+
+      try {
+        const batchSize = 450;
+        const chunks = [];
+        for (let i = 0; i < docsToDelete.length; i += batchSize) {
+          chunks.push(docsToDelete.slice(i, i + batchSize));
+        }
+
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach(row => {
+            const docRef = doc(db, "billing_records", row.id);
+            batch.delete(docRef);
+          });
+          await batch.commit();
+        }
+      } catch (e) {
+        console.error("Error deleting week:", e);
+        alert("Error al borrar semana: " + e.message);
+      }
     }
   };
 
