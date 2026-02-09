@@ -117,24 +117,32 @@ function App() {
       chunks.push(sanitizedData.slice(i, i + batchSize));
     }
 
-    try {
-      let count = 0;
-      for (const chunk of chunks) {
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const chunk of chunks) {
+      try {
         const batch = writeBatch(db);
         chunk.forEach((row) => {
           const docRef = doc(collection(db, "billing_records"));
           batch.set(docRef, row);
         });
         await batch.commit();
-        count += chunk.length;
-        console.log(`Uploaded batch: ${count} / ${sanitizedData.length}`);
+        successCount += chunk.length;
+        console.log(`Batch success: ${chunk.length} records`);
+      } catch (e) {
+        console.error("Batch failed:", e);
+        failCount += chunk.length;
       }
+    }
 
-      setView('dashboard');
-      alert(`Se han cargado ${sanitizedData.length} registros correctamente.`);
-    } catch (e) {
-      console.error("Error adding document: ", e);
-      alert("Error al guardar datos: " + (e.message || e));
+    // View update is automatic via onSnapshot but we switch view
+    setView('dashboard');
+
+    if (failCount === 0) {
+      alert(`✅ ÉXITO: Se han cargado ${successCount} registros correctamente.`);
+    } else {
+      alert(`⚠️ ATENCIÓN: Se cargaron ${successCount} registros, pero ${failCount} fallaron.\nRevisa la consola o intenta subir de nuevo el archivo.`);
     }
   };
 
