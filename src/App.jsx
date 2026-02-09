@@ -4,7 +4,7 @@ import Upload from './components/Upload';
 import Dashboard from './components/Dashboard';
 import DataManagement from './components/DataManagement';
 import Login from './components/Login';
-import { LayoutDashboard, FileSpreadsheet, Settings, PieChart, PanelLeft, Trash2, Database, Truck, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet, Settings, PieChart, PanelLeft, Trash2, Database, Truck, LogOut, Shield, UploadCloud } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -468,13 +468,14 @@ function App() {
           active={view === 'data'}
           onClick={() => setView('data')}
         />
-        <SidebarItem
-          icon={Database}
-          label="Subir"
-          active={view === 'upload'}
-          onClick={() => setView('upload')}
-          disabled={!isAdmin}
-        />
+        {isAdmin && (
+          <SidebarItem
+            icon={UploadCloud}
+            label="Subir"
+            active={view === 'upload'}
+            onClick={() => setView('upload')}
+          />
+        )}
 
         <div className="mt-auto flex flex-col items-center gap-2">
           <SidebarItem
