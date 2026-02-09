@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from './firebase'; // Import our db instance
-import { collection, onSnapshot, addDoc, doc, deleteDoc, writeBatch, query, getDocs } from 'firebase/firestore';
+import { supabase } from './supabase';
 import Upload from './components/Upload';
 import Dashboard from './components/Dashboard';
 import DataManagement from './components/DataManagement';
@@ -19,20 +18,20 @@ function SidebarItem({ icon: Icon, label, active, onClick, variant = 'default', 
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
       className={clsx(
-        "w-full flex items-center gap-3 px-4 py-3 my-1 rounded-xl transition-all duration-300 font-medium text-sm group",
+        "relative group flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 w-14 h-14",
         active
-          ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/40 translate-x-1"
+          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 ring-1 ring-white/20"
           : isDestructive
-            ? "text-slate-400 hover:bg-red-900/30 hover:text-red-400 hover:shadow-md hover:-translate-y-0.5"
-            : "text-slate-400 hover:bg-slate-800 hover:text-white hover:shadow-md hover:-translate-y-0.5",
-        disabled && "opacity-50 cursor-not-allowed hidden"
+            ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            : "text-slate-400 hover:bg-slate-800 hover:text-white"
       )}
+      title={label}
     >
-      <Icon size={18} className={clsx("transition-transform", active ? "scale-110" : "group-hover:scale-110")} />
-      <span className="tracking-wide">{label}</span>
-      {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+      <Icon size={22} strokeWidth={active ? 2.5 : 2} />
+      {active && (
+        <span className="absolute -right-1 top-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.6)]"></span>
+      )}
     </button>
   );
 }
@@ -87,29 +86,67 @@ function App() {
     return localStorage.getItem('auth_isAdmin') === 'true';
   });
 
-  // Data State - Sync with Firestore
+  // Data State
   const [data, setData] = useState([]);
 
-  // Subscribe to Firestore updates
-  useEffect(() => {
-    if (!isAuthenticated) return; // Only listen if authenticated to save reads/bandwidth
+  // Notification State
+  const [notification, setNotification] = useState(null);
+  const [validationErrors, setValidationErrors] = useState([]); // Store validation errors
+  const [isLoadingData, setIsLoadingData] = useState(true); // Initial load state
+  const [isProcessing, setIsProcessing] = useState(false); // Blocking action state
 
-    const q = query(collection(db, "billing_records")); // Using 'billing_records' collection
+  const showNotification = (message, type = 'info', duration = 5000) => {
+    setNotification({ message, type });
+    if (duration > 0 && type !== 'error') {
+      setTimeout(() => setNotification(null), duration);
+    }
+  };
 
-    // ... rest of useEffect
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const records = [];
-      querySnapshot.forEach((doc) => {
-        records.push({ ...doc.data(), id: doc.id });
-      });
-      // console.log("Fetched records:", records.length);
-      setData(records);
-    }, (error) => {
+  // Fetch Data from Supabase
+  const fetchData = async () => {
+    try {
+      // setIsLoadingData(true); // Don't block UI on background updates
+      const { data: records, error } = await supabase
+        .from('billing_records')
+        .select('*');
+
+      if (error) {
+        throw error;
+      }
+
+      setData(records || []);
+    } catch (error) {
       console.error("Error fetching data:", error);
-    });
+      showNotification("Error de conexión: " + error.message, 'error', 0);
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
 
-    return () => unsubscribe();
-  }, [isAuthenticated]); // Depend on isAuthenticated
+  // Subscribe to Realtime updates
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Initial Fetch
+    fetchData();
+
+    // Realtime Subscription
+    const channel = supabase
+      .channel('billing-control-calm')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'billing_records' },
+        (payload) => {
+          // console.log('Change received!', payload);
+          fetchData(); // Simplest strategy: re-fetch all. efficient enough for <10k rows.
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAuthenticated]);
 
   const [view, setView] = useState('dashboard'); // Default to dashboard
 
@@ -142,99 +179,89 @@ function App() {
     setView('dashboard');
   };
 
-  // Notification State
-  const [notification, setNotification] = useState(null);
-  const [validationErrors, setValidationErrors] = useState([]); // Store validation errors
-
-  const showNotification = (message, type = 'info') => {
-    setNotification({ message, type });
-    // Auto clear success/info after 5 seconds
-    if (type !== 'error') {
-      setTimeout(() => setNotification(null), 5000);
-    }
-  };
-
   const handleDataLoaded = async (newData) => {
-    showNotification("Validando y subiendo datos...", 'info');
-    setValidationErrors([]); // Clear previous errors
+    try {
+      setIsProcessing(true);
+      showNotification("Analizando archivo...", 'info', 0); // Sticky
+      setValidationErrors([]);
 
-    // 1. Validate Data
-    const validRows = [];
-    const errors = [];
+      // 1. Validate Data
+      const validRows = [];
+      const errors = [];
 
-    newData.forEach((row, index) => {
-      const rowNum = index + 2; // Excel header is row 1, so data starts at 2
+      newData.forEach((row, index) => {
+        const rowNum = index + 2;
+        if (Object.keys(row).length === 0) return;
 
-      // Check for empty object
-      if (Object.keys(row).length === 0) return;
+        if (!row['F.Carga']) {
+          errors.push({ row: rowNum, reason: "Falta la fecha (Columna 'F.Carga')" });
+          return;
+        }
+        if (row['Euros'] === null || row['Euros'] === undefined) {
+          errors.push({ row: rowNum, reason: "Falta el importe (Columna 'Euros')" });
+          return;
+        }
 
-      // Required Fields
-      if (!row['F.Carga']) {
-        errors.push({ row: rowNum, reason: "Falta la fecha (Columna 'F.Carga')" });
-        return;
-      }
-      if (row['Euros'] === undefined || row['Euros'] === null) {
-        errors.push({ row: rowNum, reason: "Falta el importe (Columna 'Euros')" });
-        return;
-      }
-
-      // Sanitize
-      const cleanRow = {};
-      Object.keys(row).forEach(key => {
-        cleanRow[key] = row[key] === undefined ? null : row[key];
-      });
-      validRows.push(cleanRow);
-    });
-
-    if (errors.length > 0) {
-      setValidationErrors(errors);
-      // We continue to upload valid rows, but warn user
-    }
-
-    if (validRows.length === 0) {
-      showNotification("No se encontraron filas válidas para subir.", 'error');
-      return;
-    }
-
-    // 2. Upload Valid Data
-    const batchSize = 450;
-    const chunks = [];
-    for (let i = 0; i < validRows.length; i += batchSize) {
-      chunks.push(validRows.slice(i, i + batchSize));
-    }
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      try {
-        // Update progress
-        showNotification(`Subiendo bloque ${i + 1} de ${chunks.length} (${Math.min((i + 1) * batchSize, validRows.length)} / ${validRows.length})...`, 'info');
-
-        const batch = writeBatch(db);
-        chunk.forEach((row) => {
-          const docRef = doc(collection(db, "billing_records"));
-          batch.set(docRef, row);
+        // Sanitize
+        const cleanRow = {};
+        Object.keys(row).forEach(key => {
+          cleanRow[key] = row[key] === undefined ? null : row[key];
         });
-        await batch.commit();
-        successCount += chunk.length;
-        console.log(`Batch success: ${chunk.length} records`);
-      } catch (e) {
-        console.error("Batch failed:", e);
-        failCount += chunk.length;
+        // Assign raw_data for future proofing if needed, though cleanRow is flat
+        cleanRow.raw_data = row;
+        validRows.push(cleanRow);
+      });
+
+      if (errors.length > 0) setValidationErrors(errors);
+
+      if (validRows.length === 0) {
+        showNotification("No se encontraron filas válidas.", 'error', 0);
+        return;
       }
-    }
 
-    // View update is automatic via onSnapshot but we switch view
-    setView('dashboard');
+      // 2. Upload Valid Data
+      const batchSize = 100; // Supabase limit is often higher but 100 is safe
+      const chunks = [];
+      for (let i = 0; i < validRows.length; i += batchSize) {
+        chunks.push(validRows.slice(i, i + batchSize));
+      }
 
-    if (failCount === 0 && errors.length === 0) {
-      showNotification(`✅ ÉXITO: Se han cargado ${successCount} registros correctamente.`, 'success');
-    } else if (failCount === 0 && errors.length > 0) {
-      showNotification(`⚠️ PARCIAL: Subidos ${successCount} registros. ${errors.length} filas tenían errores (ver detalles).`, 'warning');
-    } else {
-      showNotification(`❌ PROBLEMAS: Subidos ${successCount}, Fallados ${failCount}.`, 'error');
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        try {
+          showNotification(`Subiendo bloque ${i + 1} de ${chunks.length}...`, 'info', 0);
+
+          const { error } = await supabase
+            .from('billing_records')
+            .insert(chunk);
+
+          if (error) throw error;
+
+          successCount += chunk.length;
+        } catch (e) {
+          console.error("Batch failed:", e);
+          failCount += chunk.length;
+        }
+      }
+
+      setView('dashboard');
+
+      if (failCount === 0 && errors.length === 0) {
+        showNotification(`✅ ÉXITO: ${successCount} registros subidos.`, 'success');
+      } else if (failCount === 0 && errors.length > 0) {
+        showNotification(`⚠️ PARCIAL: ${successCount} subidos. ${errors.length} errores.`, 'warning', 0);
+      } else {
+        showNotification(`❌ PROBLEMAS: ${successCount} subidos. ${failCount} fallados.`, 'error', 0);
+      }
+
+    } catch (error) {
+      console.error("Critical upload error:", error);
+      showNotification("Error crítico: " + error.message, 'error', 0);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -242,31 +269,18 @@ function App() {
     if (confirm('¿Estás seguro de que quieres borrar todos los datos? Esta acción es irreversible y afectará a todos los usuarios.')) {
       try {
         showNotification("Borrando todos los datos...", 'info');
-        // We need to delete all docs.
-        // First get all docs
-        const q = query(collection(db, "billing_records"));
-        const snapshot = await getDocs(q);
 
-        const batchSize = 450;
-        const chunks = [];
-        let currentChunk = [];
+        // Supabase truncate or delete all
+        // We can't easy truncate without admin API sometimes, but delete where id is not null works
+        const { error } = await supabase
+          .from('billing_records')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete everything that isn't a dummy uuid
 
-        snapshot.forEach(doc => {
-          currentChunk.push(doc);
-          if (currentChunk.length === batchSize) {
-            chunks.push(currentChunk);
-            currentChunk = [];
-          }
-        });
-        if (currentChunk.length > 0) chunks.push(currentChunk);
+        if (error) throw error;
 
-        for (const chunk of chunks) {
-          const batch = writeBatch(db);
-          chunk.forEach(doc => {
-            batch.delete(doc.ref);
-          });
-          await batch.commit();
-        }
+        // Optimize: Trigger manual fetch immediately in case realtime lags
+        fetchData();
 
         setView('upload');
         showNotification("Todos los datos han sido borrados.", 'success');
@@ -279,40 +293,38 @@ function App() {
 
   const handleDeleteMonth = async (monthStr) => {
     if (confirm(`¿Borrar todos los datos de ${monthStr}?`)) {
-      // Find docs to delete based on current data state which has IDs
-      // This is efficient enough for small-medium datasets
       showNotification(`Borrando datos de ${monthStr}...`, 'info');
 
       const docsToDelete = data.filter(row => {
         let dateObj;
         const rawDate = row['F.Carga'];
+        // Supabase might return text, check if format matches
+        // Assuming row['F.Carga'] is what we saved.
+        if (!rawDate) return false;
+
+        // Try parsing
         if (typeof rawDate === 'number') {
           dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
         } else {
           dateObj = new Date(rawDate);
         }
+
         if (isNaN(dateObj)) return false;
         return format(dateObj, 'MMM yyyy', { locale: es }) === monthStr;
       });
 
       if (docsToDelete.length === 0) return;
+      const idsToDelete = docsToDelete.map(d => d.id);
 
       try {
-        const batchSize = 450;
-        const chunks = [];
-        for (let i = 0; i < docsToDelete.length; i += batchSize) {
-          chunks.push(docsToDelete.slice(i, i + batchSize));
-        }
+        const { error } = await supabase
+          .from('billing_records')
+          .delete()
+          .in('id', idsToDelete);
 
-        for (const chunk of chunks) {
-          const batch = writeBatch(db);
-          chunk.forEach(row => {
-            // row.id comes from our onSnapshot mapping
-            const docRef = doc(db, "billing_records", row.id);
-            batch.delete(docRef);
-          });
-          await batch.commit();
-        }
+        if (error) throw error;
+
+        fetchData();
         showNotification(`Datos de ${monthStr} eliminados.`, 'success');
       } catch (e) {
         console.error("Error deleting month:", e);
@@ -327,6 +339,8 @@ function App() {
       const docsToDelete = data.filter(row => {
         let dateObj;
         const rawDate = row['F.Carga'];
+        if (!rawDate) return false;
+
         if (typeof rawDate === 'number') {
           dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
         } else {
@@ -350,22 +364,17 @@ function App() {
       });
 
       if (docsToDelete.length === 0) return;
+      const idsToDelete = docsToDelete.map(d => d.id);
 
       try {
-        const batchSize = 450;
-        const chunks = [];
-        for (let i = 0; i < docsToDelete.length; i += batchSize) {
-          chunks.push(docsToDelete.slice(i, i + batchSize));
-        }
+        const { error } = await supabase
+          .from('billing_records')
+          .delete()
+          .in('id', idsToDelete);
 
-        for (const chunk of chunks) {
-          const batch = writeBatch(db);
-          chunk.forEach(row => {
-            const docRef = doc(db, "billing_records", row.id);
-            batch.delete(docRef);
-          });
-          await batch.commit();
-        }
+        if (error) throw error;
+
+        fetchData();
         showNotification(`Datos de ${weekStr} eliminados.`, 'success');
       } catch (e) {
         console.error("Error deleting week:", e);
@@ -386,6 +395,15 @@ function App() {
 
   return (
     <div className="min-h-screen flex relative font-sans selection:bg-indigo-100 selection:text-indigo-900">
+
+      {/* Blocking Overlay for Uploads */}
+      {isProcessing && (
+        <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-white cursor-wait animate-in fade-in duration-300">
+          <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mb-4"></div>
+          <h2 className="text-2xl font-bold">Procesando datos...</h2>
+          <p className="text-white/80 mt-2">Por favor no cierres la ventana</p>
+        </div>
+      )}
 
       {/* Validation Modal */}
       <ValidationErrorsModal errors={validationErrors} onClose={() => setValidationErrors([])} />
@@ -411,140 +429,85 @@ function App() {
         </div>
       )}
 
-      {/* Floating Dark Sidebar */}
-      <aside className="fixed left-4 top-4 bottom-4 w-64 bg-slate-900 border border-slate-800 shadow-2xl shadow-blue-900/20 rounded-2xl flex flex-col z-50 overflow-hidden text-slate-300">
-        {/* Decorative top gradient */}
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
-
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-10 pl-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-              <Truck size={20} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-white leading-tight">Billing<span className="text-blue-400">Control</span></h1>
-              <p className="text-[10px] items-center flex gap-1 text-slate-400 font-semibold uppercase tracking-wider mt-1">
-                {isAdmin ? (
-                  <span className="text-emerald-400 flex items-center gap-1"><Shield size={10} /> Admin</span>
-                ) : (
-                  <span className="text-slate-500 flex items-center gap-1">Lectura</span>
-                )}
-              </p>
-            </div>
-          </div>
-
-          <nav className="flex flex-col gap-1">
-            <div className="px-4 mb-3 flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Navegación</span>
-            </div>
-            <SidebarItem
-              icon={LayoutDashboard}
-              label="Panel Principal"
-              active={currentView === 'dashboard'}
-              onClick={() => setView('dashboard')}
-            />
-
-            {/* Admin Only: Upload */}
-            <SidebarItem
-              icon={FileSpreadsheet}
-              label="Importar Datos"
-              active={currentView === 'upload'}
-              onClick={() => setView('upload')}
-              disabled={!isAdmin}
-            />
-
-            {/* Admin Only: Management */}
-            <SidebarItem
-              icon={Database}
-              label="Gestión de Datos"
-              active={currentView === 'management'}
-              onClick={() => setView('management')}
-              disabled={!isAdmin}
-            />
-          </nav>
-
-          {/* Actions Section - Admin Only */}
-          {data.length > 0 && isAdmin && (
-            <div className="mt-8">
-              <div className="px-4 mb-3 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Acciones</span>
-              </div>
-              <SidebarItem
-                icon={Trash2}
-                label="Limpiar Todo"
-                variant="destructive"
-                onClick={handleReset}
-              />
-            </div>
-          )}
+      {/* Sidebar */}
+      <div className="w-20 bg-slate-900 flex flex-col items-center py-6 gap-2 shadow-xl z-20">
+        <div className="p-3 bg-indigo-500/20 rounded-xl mb-4">
+          <Truck className="text-indigo-400" size={28} />
         </div>
 
-        <div className="mt-auto p-4 mx-2 mb-2 bg-slate-800/50 rounded-xl border border-slate-700/50">
-          {/* Config button mapping to Management - Admin Only */}
-          {isAdmin && (
-            <SidebarItem
-              icon={Settings}
-              label="Configuración"
-              active={currentView === 'management'}
-              onClick={() => setView('management')}
-            />
-          )}
+        <SidebarItem
+          icon={LayoutDashboard}
+          label="Dash"
+          active={view === 'dashboard'}
+          onClick={() => setView('dashboard')}
+        />
+        <SidebarItem
+          icon={FileSpreadsheet}
+          label="Datos"
+          active={view === 'data'}
+          onClick={() => setView('data')}
+        />
+        <SidebarItem
+          icon={Database}
+          label="Subir"
+          active={view === 'upload'}
+          onClick={() => setView('upload')}
+          disabled={!isAdmin}
+        />
 
-          <button
+        <div className="mt-auto flex flex-col items-center gap-2">
+          <SidebarItem
+            icon={LogOut}
+            label="Salir"
+            variant="destructive"
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 my-1 rounded-xl transition-all duration-300 font-medium text-sm text-slate-400 hover:bg-slate-700/50 hover:text-white"
-          >
-            <LogOut size={18} />
-            <span>Cerrar Sesión</span>
-          </button>
+          />
+          <p className="text-[10px] text-slate-600 font-medium">JL Campillo - <span className="text-emerald-400">v2.0 (Supabase)</span></p>
         </div>
-        <div className="px-6 pb-4 text-center">
-          <p className="text-[10px] text-slate-600 font-medium">© 2026 Control Facturacion</p>
-          <p className="text-[10px] text-slate-600 font-medium">JL Campillo - <span className="text-blue-400">v1.1</span></p>
-        </div>
-      </aside>
+      </div>
 
-      {/* Main Content - Pushed by Layout */}
-      <main className="flex-1 ml-72 p-6 transition-all duration-300">
-        <div className="max-w-7xl mx-auto pl-4">
-          {currentView === 'upload' && isAdmin ? (
-            <div className="max-w-xl mx-auto mt-16 fade-in scale-in">
-              <div className="mb-10 text-center">
-                <div className="inline-block p-4 rounded-full bg-blue-50 mb-4 text-blue-600">
-                  <FileSpreadsheet size={48} strokeWidth={1.5} />
+      {/* Main Content */}
+      <div className="flex-1 bg-slate-100 h-screen overflow-hidden flex flex-col">
+        {isLoadingData ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-4">
+            <div className="w-10 h-10 border-4 border-slate-300 border-t-indigo-500 rounded-full animate-spin"></div>
+            <p className="font-medium">Cargando datos desde Supabase...</p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto">
+            {view === 'dashboard' && <Dashboard rawData={data} />}
+            {view === 'data' && <DataManagement rawData={data} onDeleteMonth={handleDeleteMonth} onDeleteWeek={handleDeleteWeek} isAdmin={isAdmin} />}
+            {view === 'upload' && isAdmin && (
+              <div className="p-8 max-w-4xl mx-auto">
+                <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+                  <div className="p-8 border-b border-slate-100 bg-white">
+                    <h2 className="text-2xl font-bold text-slate-800">Cargar Archivo Excel</h2>
+                    <p className="text-slate-500 mt-2">Sube el archivo de facturación para actualizar el dashboard.</p>
+                  </div>
+                  <div className="p-8 bg-slate-50/50">
+                    <Upload onDataLoaded={handleDataLoaded} />
+
+                    <div className="mt-8 pt-8 border-t border-slate-200">
+                      <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                        <Trash2 size={16} />
+                        Zona de Peligro
+                      </h3>
+                      <button
+                        onClick={handleReset}
+                        className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors border border-red-200 flex items-center gap-2"
+                      >
+                        <Trash2 size={16} />
+                        Borrar todos los datos
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <h2 className="text-3xl font-bold text-slate-900 mb-3 tracking-tight">Importar Datos</h2>
-                <p className="text-slate-500 text-lg">Arrastra tus archivos Excel aquí para actualizar el panel de control al instante.</p>
               </div>
-              <Upload onDataLoaded={handleDataLoaded} />
-              {data.length > 0 && (
-                <div className="mt-8 text-center">
-                  <button
-                    onClick={() => setView('dashboard')}
-                    className="text-indigo-600 hover:text-indigo-700 font-semibold text-sm hover:underline decoration-2 underline-offset-4"
-                  >
-                    &larr; Volver al Panel
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : currentView === 'management' && isAdmin ? (
-            <DataManagement
-              data={data}
-              onDeleteMonth={handleDeleteMonth}
-              onDeleteWeek={handleDeleteWeek}
-              onResetAll={handleReset}
-            />
-          ) : (
-            <Dashboard
-              rawData={data}
-              onAddMore={() => isAdmin ? setView('upload') : alert('Solo administradores pueden añadir datos.')}
-              onReset={handleReset}
-              isAdmin={isAdmin}
-            />
-          )}
-        </div>
-      </main>
+            )}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
