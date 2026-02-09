@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { processBillingData } from '../utils/billing';
-import { Users, Truck, DollarSign, Calendar, Filter, Plus, LayoutDashboard, BarChart2 } from 'lucide-react';
+import { Users, Truck, DollarSign, Calendar, Filter, Plus, LayoutDashboard, BarChart2, Globe } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -44,7 +44,7 @@ function DataBar({ value, max, colorClass = "bg-blue-600" }) {
     );
 }
 
-export default function Dashboard({ rawData, currentDepartment, onAddMore, onReset, isAdmin }) {
+export default function Dashboard({ rawData, currentDepartment, onDepartmentChange, onAddMore, onReset, isAdmin }) {
     const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'drivers', 'clients', 'comparison'
     const [selectedMonth, setSelectedMonth] = useState('all');
     const [selectedWeek, setSelectedWeek] = useState('all');
@@ -197,6 +197,23 @@ export default function Dashboard({ rawData, currentDepartment, onAddMore, onRes
                 </div>
 
                 <div className="flex flex-wrap gap-3 items-center">
+                    {isAdmin && (
+                        <div className="relative animate-in fade-in slide-in-from-left-4">
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-indigo-500">
+                                <Globe size={16} />
+                            </div>
+                            <select
+                                value={currentDepartment}
+                                onChange={(e) => onDepartmentChange(e.target.value)}
+                                className="pl-10 pr-8 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full appearance-none cursor-pointer hover:bg-indigo-100 transition shadow-sm font-bold"
+                            >
+                                <option value="all">🌍 Global</option>
+                                <option value="Intermodal">🚢 Intermodal</option>
+                                <option value="Nacional">🇪🇸 Nacional</option>
+                            </select>
+                        </div>
+                    )}
+
                     {/* Month Filter */}
                     <div className="relative">
                         <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
