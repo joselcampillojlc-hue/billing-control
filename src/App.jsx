@@ -206,8 +206,12 @@ function App() {
     let successCount = 0;
     let failCount = 0;
 
-    for (const chunk of chunks) {
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
       try {
+        // Update progress
+        showNotification(`Subiendo bloque ${i + 1} de ${chunks.length} (${Math.min((i + 1) * batchSize, validRows.length)} / ${validRows.length})...`, 'info');
+
         const batch = writeBatch(db);
         chunk.forEach((row) => {
           const docRef = doc(collection(db, "billing_records"));
