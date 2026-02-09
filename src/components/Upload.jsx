@@ -7,7 +7,7 @@ export default function Upload({ onDataLoaded }) {
     const handleFile = async (file) => {
         try {
             const data = await parseExcel(file);
-            onDataLoaded(data);
+            await onDataLoaded(data);
         } catch (error) {
             console.error("Error reading file:", error);
             alert("Error reading file. Please check the format.");

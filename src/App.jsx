@@ -101,7 +101,20 @@ function App() {
     setView('dashboard');
   };
 
+  // Notification State
+  const [notification, setNotification] = useState(null);
+
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+    // Auto clear success/info after 5 seconds
+    if (type !== 'error') {
+      setTimeout(() => setNotification(null), 5000);
+    }
+  };
+
   const handleDataLoaded = async (newData) => {
+    showNotification("Procesando y subiendo datos... Por favor espera.", 'info');
+
     // Sanitize data: Firestore does not like 'undefined' values.
     const sanitizedData = newData.map(row => {
       const cleanRow = {};
@@ -140,15 +153,16 @@ function App() {
     setView('dashboard');
 
     if (failCount === 0) {
-      alert(`✅ ÉXITO: Se han cargado ${successCount} registros correctamente.`);
+      showNotification(`✅ ÉXITO: Se han cargado ${successCount} registros correctamente.`, 'success');
     } else {
-      alert(`⚠️ ATENCIÓN: Se cargaron ${successCount} registros, pero ${failCount} fallaron.\nRevisa la consola o intenta subir de nuevo el archivo.`);
+      showNotification(`⚠️ ATENCIÓN: Se cargaron ${successCount} registros, pero ${failCount} fallaron. Revisa la consola o intenta subir de nuevo el archivo.`, 'error');
     }
   };
 
   const handleReset = async () => {
     if (confirm('¿Estás seguro de que quieres borrar todos los datos? Esta acción es irreversible y afectará a todos los usuarios.')) {
       try {
+        showNotification("Borrando todos los datos...", 'info');
         // We need to delete all docs.
         // First get all docs
         const q = query(collection(db, "billing_records"));
@@ -176,9 +190,10 @@ function App() {
         }
 
         setView('upload');
+        showNotification("Todos los datos han sido borrados.", 'success');
       } catch (e) {
         console.error("Error clearing data:", e);
-        alert("Error al borrar datos: " + e.message);
+        showNotification("Error al borrar datos: " + e.message, 'error');
       }
     }
   };
@@ -187,6 +202,7 @@ function App() {
     if (confirm(`¿Borrar todos los datos de ${monthStr}?`)) {
       // Find docs to delete based on current data state which has IDs
       // This is efficient enough for small-medium datasets
+      showNotification(`Borrando datos de ${monthStr}...`, 'info');
 
       const docsToDelete = data.filter(row => {
         let dateObj;
@@ -218,15 +234,17 @@ function App() {
           });
           await batch.commit();
         }
+        showNotification(`Datos de ${monthStr} eliminados.`, 'success');
       } catch (e) {
         console.error("Error deleting month:", e);
-        alert("Error al borrar mes: " + e.message);
+        showNotification("Error al borrar mes: " + e.message, 'error');
       }
     }
   };
 
   const handleDeleteWeek = async (weekStr) => {
     if (confirm(`¿Borrar datos de ${weekStr}?`)) {
+      showNotification(`Borrando datos de ${weekStr}...`, 'info');
       const docsToDelete = data.filter(row => {
         let dateObj;
         const rawDate = row['F.Carga'];
@@ -269,9 +287,10 @@ function App() {
           });
           await batch.commit();
         }
+        showNotification(`Datos de ${weekStr} eliminados.`, 'success');
       } catch (e) {
         console.error("Error deleting week:", e);
-        alert("Error al borrar semana: " + e.message);
+        showNotification("Error al borrar semana: " + e.message, 'error');
       }
     }
   };
@@ -288,6 +307,22 @@ function App() {
 
   return (
     <div className="min-h-screen flex relative font-sans selection:bg-indigo-100 selection:text-indigo-900">
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className={clsx(
+          "fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-2xl border transition-all duration-300 animate-in slide-in-from-top-4",
+          notification.type === 'success' ? "bg-emerald-500 text-white border-emerald-600" :
+            notification.type === 'error' ? "bg-red-500 text-white border-red-600" :
+              "bg-blue-500 text-white border-blue-600"
+        )}>
+          <div className="flex items-center gap-3">
+            <div className="font-bold text-lg">{notification.type === 'success' ? '✓' : notification.type === 'error' ? '✕' : 'ℹ'}</div>
+            <p className="font-medium">{notification.message}</p>
+            <button onClick={() => setNotification(null)} className="ml-4 hover:bg-white/20 p-1 rounded">✕</button>
+          </div>
+        </div>
+      )}
 
       {/* Floating Dark Sidebar */}
       <aside className="fixed left-4 top-4 bottom-4 w-64 bg-slate-900 border border-slate-800 shadow-2xl shadow-blue-900/20 rounded-2xl flex flex-col z-50 overflow-hidden text-slate-300">
@@ -378,7 +413,7 @@ function App() {
         </div>
         <div className="px-6 pb-4 text-center">
           <p className="text-[10px] text-slate-600 font-medium">© 2026 Control Facturacion</p>
-          <p className="text-[10px] text-slate-600 font-medium">JL Campillo</p>
+          <p className="text-[10px] text-slate-600 font-medium">JL Campillo - <span className="text-blue-400">v1.1</span></p>
         </div>
       </aside>
 
