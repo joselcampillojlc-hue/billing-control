@@ -8,6 +8,7 @@ import { LayoutDashboard, FileSpreadsheet, Settings, PieChart, PanelLeft, Trash2
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDate, getWeekKey, getMonthKey } from './utils/dateUtils';
 
 // Custom minimal sidebar button
 function SidebarItem({ icon: Icon, label, active, onClick, variant = 'default', disabled = false }) {
@@ -317,21 +318,9 @@ function App() {
       showNotification(`Borrando datos de ${monthStr}...`, 'info');
 
       const docsToDelete = data.filter(row => {
-        let dateObj;
-        const rawDate = row['F.Carga'];
-        // Supabase might return text, check if format matches
-        // Assuming row['F.Carga'] is what we saved.
-        if (!rawDate) return false;
-
-        // Try parsing
-        if (typeof rawDate === 'number') {
-          dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-        } else {
-          dateObj = new Date(rawDate);
-        }
-
-        if (isNaN(dateObj)) return false;
-        return format(dateObj, 'MMM yyyy', { locale: es }) === monthStr;
+        const dateObj = parseDate(row['F.Carga']);
+        if (!dateObj) return false;
+        return getMonthKey(dateObj) === monthStr;
       });
 
       if (docsToDelete.length === 0) return;
@@ -357,34 +346,19 @@ function App() {
   const handleDeleteWeek = async (weekStr) => {
     if (confirm(`¿Borrar datos de ${weekStr}?`)) {
       showNotification(`Borrando datos de ${weekStr}...`, 'info');
+
       const docsToDelete = data.filter(row => {
-        let dateObj;
-        const rawDate = row['F.Carga'];
-        if (!rawDate) return false;
-
-        if (typeof rawDate === 'number') {
-          dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-        } else {
-          dateObj = new Date(rawDate);
-        }
-        if (isNaN(dateObj)) return false;
-
-        // Calculate week key to match
-        const target = new Date(dateObj.valueOf());
-        const dayNr = (dateObj.getDay() + 6) % 7;
-        target.setDate(target.getDate() - dayNr + 3);
-        const firstThursday = target.valueOf();
-        target.setMonth(0, 1);
-        if (target.getDay() !== 4) {
-          target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-        }
-        const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
-        const key = `Semana ${weekNum} - ${dateObj.getFullYear()}`;
-
+        const dateObj = parseDate(row['F.Carga']);
+        if (!dateObj) return false;
+        const key = getWeekKey(dateObj);
         return key === weekStr;
       });
 
-      if (docsToDelete.length === 0) return;
+      if (docsToDelete.length === 0) {
+        showNotification("No se encontraron registros para esa semana (¿error de formato de fecha?)", 'warning');
+        return;
+      }
+
       const idsToDelete = docsToDelete.map(d => d.id);
 
       try {

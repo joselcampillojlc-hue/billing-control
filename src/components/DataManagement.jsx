@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Trash2, Calendar, Database, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDate, getWeekKey, getMonthKey } from '../utils/dateUtils';
 
 export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onResetAll, isAdmin }) {
 
@@ -9,22 +10,9 @@ export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onRe
     const months = useMemo(() => {
         const groups = {};
         data.forEach(row => {
-            let dateObj;
-            const rawDate = row['F.Carga'];
-            if (typeof rawDate === 'number') {
-                dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-            } else if (typeof rawDate === 'string' && /^\d+$/.test(rawDate)) {
-                const serial = parseInt(rawDate, 10);
-                dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
-            } else {
-                dateObj = new Date(rawDate);
-                if (isNaN(dateObj) && typeof rawDate === 'string' && rawDate.includes('/')) {
-                    const part = rawDate.split('/');
-                    if (part.length === 3) dateObj = new Date(part[2], part[1] - 1, part[0]);
-                }
-            }
-            if (!isNaN(dateObj)) {
-                const key = format(dateObj, 'MMM yyyy', { locale: es });
+            const dateObj = parseDate(row['F.Carga']);
+            if (dateObj) {
+                const key = getMonthKey(dateObj);
                 groups[key] = (groups[key] || 0) + 1;
             }
         });
@@ -35,32 +23,9 @@ export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onRe
     const weeks = useMemo(() => {
         const groups = {};
         data.forEach(row => {
-            let dateObj;
-            const rawDate = row['F.Carga'];
-            if (typeof rawDate === 'number') {
-                dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-            } else if (typeof rawDate === 'string' && /^\d+$/.test(rawDate)) {
-                const serial = parseInt(rawDate, 10);
-                dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
-            } else {
-                dateObj = new Date(rawDate);
-                if (isNaN(dateObj) && typeof rawDate === 'string' && rawDate.includes('/')) {
-                    const part = rawDate.split('/');
-                    if (part.length === 3) dateObj = new Date(part[2], part[1] - 1, part[0]);
-                }
-            }
-            if (!isNaN(dateObj)) {
-                // Get ISO week
-                const target = new Date(dateObj.valueOf());
-                const dayNr = (dateObj.getDay() + 6) % 7;
-                target.setDate(target.getDate() - dayNr + 3);
-                const firstThursday = target.valueOf();
-                target.setMonth(0, 1);
-                if (target.getDay() !== 4) {
-                    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-                }
-                const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
-                const key = `Semana ${weekNum} - ${dateObj.getFullYear()}`;
+            const dateObj = parseDate(row['F.Carga']);
+            if (dateObj) {
+                const key = getWeekKey(dateObj);
                 groups[key] = (groups[key] || 0) + 1;
             }
         });

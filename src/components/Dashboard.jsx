@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Comparison from './Comparison';
+import { parseDate, getWeekKey, getMonthKey } from '../utils/dateUtils';
 
 function StatCard({ title, value, icon: Icon, color }) {
     const bgColors = {
@@ -59,22 +60,9 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
     const availableMonths = useMemo(() => {
         const months = new Set();
         rawData.forEach(row => {
-            let dateObj;
-            const rawDate = row['F.Carga'];
-            if (typeof rawDate === 'number') {
-                dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-            } else if (typeof rawDate === 'string' && /^\d+$/.test(rawDate)) {
-                const serial = parseInt(rawDate, 10);
-                dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
-            } else {
-                dateObj = new Date(rawDate);
-                if (isNaN(dateObj) && typeof rawDate === 'string' && rawDate.includes('/')) {
-                    const part = rawDate.split('/');
-                    if (part.length === 3) dateObj = new Date(part[2], part[1] - 1, part[0]);
-                }
-            }
-            if (!isNaN(dateObj)) {
-                months.add(format(dateObj, 'MMM yyyy', { locale: es }));
+            const dateObj = parseDate(row['F.Carga']);
+            if (dateObj) {
+                months.add(getMonthKey(dateObj));
             }
         });
         return Array.from(months);
@@ -84,36 +72,11 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
     const availableWeeks = useMemo(() => {
         const weeks = new Set();
         rawData.forEach(row => {
-            let dateObj;
-            const rawDate = row['F.Carga'];
-            if (typeof rawDate === 'number') {
-                dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-            } else if (typeof rawDate === 'string' && /^\d+$/.test(rawDate)) {
-                const serial = parseInt(rawDate, 10);
-                dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
-            } else {
-                dateObj = new Date(rawDate);
-                if (isNaN(dateObj) && typeof rawDate === 'string' && rawDate.includes('/')) {
-                    const part = rawDate.split('/');
-                    if (part.length === 3) dateObj = new Date(part[2], part[1] - 1, part[0]);
-                }
-            }
-            if (!isNaN(dateObj)) {
-                // Formatting week string
-                const target = new Date(dateObj.valueOf());
-                const dayNr = (dateObj.getDay() + 6) % 7;
-                target.setDate(target.getDate() - dayNr + 3);
-                const firstThursday = target.valueOf();
-                target.setMonth(0, 1);
-                if (target.getDay() !== 4) {
-                    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-                }
-                const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
-                const weekKey = `Semana ${weekNum} - ${dateObj.getFullYear()}`;
-
+            const dateObj = parseDate(row['F.Carga']);
+            if (dateObj) {
                 // Only add if it belongs to selected month (or if all months selected)
-                if (selectedMonth === 'all' || format(dateObj, 'MMM yyyy', { locale: es }) === selectedMonth) {
-                    weeks.add(weekKey);
+                if (selectedMonth === 'all' || getMonthKey(dateObj) === selectedMonth) {
+                    weeks.add(getWeekKey(dateObj));
                 }
             }
         });
@@ -128,40 +91,17 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
     // Filter data
     const filteredData = useMemo(() => {
         return rawData.filter(row => {
-            let dateObj;
-            const rawDate = row['F.Carga'];
-            if (typeof rawDate === 'number') {
-                dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-            } else if (typeof rawDate === 'string' && /^\d+$/.test(rawDate)) {
-                const serial = parseInt(rawDate, 10);
-                dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
-            } else {
-                dateObj = new Date(rawDate);
-                if (isNaN(dateObj) && typeof rawDate === 'string' && rawDate.includes('/')) {
-                    const part = rawDate.split('/');
-                    if (part.length === 3) dateObj = new Date(part[2], part[1] - 1, part[0]);
-                }
-            }
-            if (isNaN(dateObj)) return false;
+            const dateObj = parseDate(row['F.Carga']);
+            if (!dateObj) return false;
 
             // Month Filter
-            if (selectedMonth !== 'all' && format(dateObj, 'MMM yyyy', { locale: es }) !== selectedMonth) {
+            if (selectedMonth !== 'all' && getMonthKey(dateObj) !== selectedMonth) {
                 return false;
             }
 
             // Week Filter
             if (selectedWeek !== 'all') {
-                const target = new Date(dateObj.valueOf());
-                const dayNr = (dateObj.getDay() + 6) % 7;
-                target.setDate(target.getDate() - dayNr + 3);
-                const firstThursday = target.valueOf();
-                target.setMonth(0, 1);
-                if (target.getDay() !== 4) {
-                    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-                }
-                const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
-                const weekKey = `Semana ${weekNum} - ${dateObj.getFullYear()}`;
-                if (weekKey !== selectedWeek) return false;
+                if (getWeekKey(dateObj) !== selectedWeek) return false;
             }
 
             return true;
