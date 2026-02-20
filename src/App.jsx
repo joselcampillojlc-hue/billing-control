@@ -193,41 +193,44 @@ function App() {
       const validRows = [];
       const errors = [];
 
+      // We expect newData to be already processed by parseExcel and processBillingData in Upload.jsx
+      // which now includes 'fingerprint' and 'driver/client/amount' mapping.
       newData.forEach((row, index) => {
         const rowNum = index + 2;
-        if (Object.keys(row).length === 0) return;
-
-        if (!row['F.Carga']) {
-          errors.push({ row: rowNum, reason: "Falta la fecha (Columna 'F.Carga')" });
+        if (!row.date) {
+          errors.push({ row: rowNum, reason: "No se pudo detectar la fecha o formato inválido" });
           return;
         }
-        if (row['Euros'] === null || row['Euros'] === undefined) {
-          errors.push({ row: rowNum, reason: "Falta el importe (Columna 'Euros')" });
+        if (!row.amount && row.amount !== 0) {
+          errors.push({ row: rowNum, reason: "No se pudo detectar el importe" });
           return;
         }
-        if (!row['Conductor']) {
-          errors.push({ row: rowNum, reason: "Falta el Conductor (Columna 'Conductor')" });
+        if (row.driver === 'Unknown') {
+          errors.push({ row: rowNum, reason: "No se pudo detectar el Conductor" });
           return;
         }
-        if (!row['Nomb.Cliente']) {
-          errors.push({ row: rowNum, reason: "Falta el Cliente (Columna 'Nomb.Cliente')" });
+        if (row.client === 'Unknown') {
+          errors.push({ row: rowNum, reason: "No se pudo detectar el Cliente" });
           return;
         }
 
         // Heuristic: Check for swapped columns (Company in Driver field)
-        const conductorName = String(row['Conductor']).toUpperCase();
+        const conductorName = String(row.driver).toUpperCase();
         if (conductorName.includes(' S.L') || conductorName.includes(' S.A') || conductorName.includes('LOGISTICA') || conductorName.includes('TRANSPORT')) {
-          errors.push({ row: rowNum, reason: `Error: La columna 'Conductor' contiene una empresa (${row['Conductor']}). ¿Es posible que las columnas estén intercambiadas?` });
+          errors.push({ row: rowNum, reason: `Error: El 'Conductor' parece ser una empresa (${row.driver}). Verifica las columnas.` });
           return;
         }
 
-        // Sanitize
-        const cleanRow = {};
-        Object.keys(row).forEach(key => {
-          cleanRow[key] = row[key] === undefined ? null : row[key];
-        });
-        // Assign raw_data for future proofing if needed, though cleanRow is flat
-        cleanRow.raw_data = row;
+        // Sanitize for Supabase
+        const cleanRow = {
+          'F.Carga': format(row.date, 'yyyy-MM-dd'),
+          'Conductor': row.driver,
+          'Nomb.Cliente': row.client,
+          'Euros': row.amount,
+          'department': row.department || currentDepartment,
+          'fingerprint': row.fingerprint
+        };
+
         validRows.push(cleanRow);
       });
 
@@ -238,8 +241,8 @@ function App() {
         return;
       }
 
-      // 2. Upload Valid Data
-      const batchSize = 100; // Supabase limit is often higher but 100 is safe
+      // 2. Upload Valid Data using UPSERT on fingerprint
+      const batchSize = 100;
       const chunks = [];
       for (let i = 0; i < validRows.length; i += batchSize) {
         chunks.push(validRows.slice(i, i + batchSize));
@@ -252,11 +255,12 @@ function App() {
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         try {
-          showNotification(`Subiendo bloque ${i + 1} de ${chunks.length}...`, 'info', 0);
+          showNotification(`Sincronizando bloque ${i + 1} de ${chunks.length}...`, 'info', 0);
 
+          // Use upsert with onConflict on fingerprint to prevent duplicates
           const { error } = await supabase
             .from('billing_records')
-            .insert(chunk);
+            .upsert(chunk, { onConflict: 'fingerprint' });
 
           if (error) throw error;
 
@@ -271,12 +275,11 @@ function App() {
       setView('dashboard');
 
       if (failCount === 0 && errors.length === 0) {
-        showNotification(`✅ ÉXITO: ${successCount} registros subidos.`, 'success');
+        showNotification(`✅ ÉXITO: ${successCount} registros sincronizados.`, 'success');
       } else if (failCount === 0 && errors.length > 0) {
-        showNotification(`⚠️ PARCIAL: ${successCount} subidos. ${errors.length} errores.`, 'warning', 0);
+        showNotification(`⚠️ PARCIAL: ${successCount} sincronizados. ${errors.length} errores.`, 'warning', 0);
       } else {
-        // Show the actual error message to the user
-        showNotification(`❌ ERROR (${lastError}): ${successCount} subidos. ${failCount} fallados.`, 'error', 0);
+        showNotification(`❌ ERROR (${lastError}): ${successCount} procesados. ${failCount} fallados.`, 'error', 0);
       }
 
     } catch (error) {

@@ -22,14 +22,15 @@ export default function Upload({ onDataLoaded, currentDepartment }) {
         setIsProcessing(true);
         try {
             const rawData = await parseExcel(file);
+            const { raw: processedRows } = processBillingData(rawData);
 
-            // Inject Department Tag into RAW data (preserving Excel headers)
-            const taggedRaw = rawData.map(row => ({
+            // Inject Department Tag into processed data
+            const taggedData = processedRows.map(row => ({
                 ...row,
                 department: selectedDepartment
             }));
 
-            onDataLoaded(taggedRaw);
+            onDataLoaded(taggedData);
         } catch (error) {
             console.error("Error processing file:", error);
             alert(`Error al procesar el archivo: ${error.message || 'Formato inválido'}. \n\nAsegúrate de usar la Plantilla correcta.`);

@@ -4,11 +4,33 @@ import { es } from 'date-fns/locale';
 
 // Map user's headers to internal keys
 const FIELD_MAP = {
-  date: 'F.Carga',
-  driver: 'Conductor',
-  clientName: 'Nomb.Cliente',
-  amount: 'Euros',
-  currency: 'Euros'
+  date: ['F.Carga', 'Fecha', 'F. Carga', 'FEC. CARGA'],
+  driver: ['Conductor', 'Nombre Conductor', 'CHOFER'],
+  clientName: ['Nomb.Cliente', 'Cliente', 'Nombre Cliente', 'CLIENTE'],
+  amount: ['Euros', 'Importe', 'Total', 'EUROS'],
+  kms: ['Kms', 'KM', 'Kilómetros', 'KILOMETROS']
+};
+
+/**
+ * Finds the correct key in the row object regardless of case or slight variations.
+ */
+const getFieldValue = (row, fieldKey) => {
+  const possibleHeaders = FIELD_MAP[fieldKey];
+  if (!possibleHeaders) return null;
+
+  // 1. Try exact matches from map
+  for (const header of possibleHeaders) {
+    if (row[header] !== undefined) return row[header];
+  }
+
+  // 2. Try case-insensitive search through all row keys
+  const rowKeys = Object.keys(row);
+  for (const header of possibleHeaders) {
+    const foundKey = rowKeys.find(k => k.toLowerCase() === header.toLowerCase());
+    if (foundKey) return row[foundKey];
+  }
+
+  return null;
 };
 
 /**
@@ -43,7 +65,7 @@ export const processBillingData = (data) => {
   const processed = data.map(row => {
     // Parse date. Assuming DD/MM/YYYY or Excel serial date.
     let dateObj;
-    const rawDate = row[FIELD_MAP.date];
+    const rawDate = getFieldValue(row, 'date');
 
     // Handle Excel serial date or string
     if (typeof rawDate === 'number') {
@@ -57,8 +79,7 @@ export const processBillingData = (data) => {
         // Try parsing standard string date
         dateObj = new Date(rawDate);
 
-        // If invalid, try DD/MM/YYYY manually if needed, but new Date() usually handles ISO. 
-        // Spanish format DD/MM/YYYY might need manual parsing if new Date() fails.
+        // If invalid, try DD/MM/YYYY manually if needed
         if (isNaN(dateObj) && rawDate.includes('/')) {
           const part = rawDate.split('/');
           if (part.length === 3) {
@@ -71,12 +92,20 @@ export const processBillingData = (data) => {
 
     if (!isValid(dateObj)) dateObj = new Date(); // Fallback or error
 
-    const amount = parseFloat(row[FIELD_MAP.amount]) || 0;
+    const amount = parseFloat(getFieldValue(row, 'amount')) || 0;
+    const driver = getFieldValue(row, 'driver') || 'Unknown';
+    const client = getFieldValue(row, 'clientName') || 'Unknown';
+
+    // Generate a unique fingerprint for this row to prevent duplicates
+    // Pattern: date_driver_client_amount
+    const dateStr = format(dateObj, 'yyyy-MM-dd');
+    const fingerprint = `${dateStr}_${driver}_${client}_${amount}`.replace(/\s+/g, '_').toLowerCase();
 
     return {
       id: Math.random().toString(36).substr(2, 9),
-      driver: row[FIELD_MAP.driver] || 'Unknown',
-      client: row[FIELD_MAP.clientName] || 'Unknown',
+      fingerprint, // Added for deduplication
+      driver,
+      client,
       date: dateObj,
       week: getISOWeek(dateObj),
       month: format(dateObj, 'MMM yyyy', { locale: es }),
