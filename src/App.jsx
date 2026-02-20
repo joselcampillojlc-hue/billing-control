@@ -241,23 +241,12 @@ function App() {
         return;
       }
 
-      // Deduplicate client-side to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time"
-      // This happens if the Excel itself contains duplicate rows. We only keep the last occurrence.
-      const uniqueRowsMap = new Map();
-      validRows.forEach(row => {
-        uniqueRowsMap.set(row.fingerprint, row);
-      });
-      const deduplicatedRows = Array.from(uniqueRowsMap.values());
-
-      if (deduplicatedRows.length < validRows.length) {
-        console.warn(`Removed ${validRows.length - deduplicatedRows.length} duplicates from the Excel file itself.`);
-      }
-
       // 2. Upload Valid Data using UPSERT on fingerprint
+      // Sequence numbers guarantee that valid identical rows have different fingerprints.
       const batchSize = 100;
       const chunks = [];
-      for (let i = 0; i < deduplicatedRows.length; i += batchSize) {
-        chunks.push(deduplicatedRows.slice(i, i + batchSize));
+      for (let i = 0; i < validRows.length; i += batchSize) {
+        chunks.push(validRows.slice(i, i + batchSize));
       }
 
       let successCount = 0;

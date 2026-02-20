@@ -62,6 +62,8 @@ export const parseExcel = (file) => {
  * Processes raw data into summaries.
  */
 export const processBillingData = (data) => {
+  const fingerprintCounts = {}; // Track occurrences for sequence
+
   const processed = data.map(row => {
     // Parse date. Assuming DD/MM/YYYY or Excel serial date.
     let dateObj;
@@ -96,10 +98,14 @@ export const processBillingData = (data) => {
     const driver = getFieldValue(row, 'driver') || 'Unknown';
     const client = getFieldValue(row, 'clientName') || 'Unknown';
 
-    // Generate a unique fingerprint for this row to prevent duplicates
-    // Pattern: date_driver_client_amount
+    // Generate a unique fingerprint for this row to prevent duplicates across uploads
+    // Pattern: date_driver_client_amount_sequence
     const dateStr = format(dateObj, 'yyyy-MM-dd');
-    const fingerprint = `${dateStr}_${driver}_${client}_${amount}`.replace(/\s+/g, '_').toLowerCase();
+    const baseFingerprint = `${dateStr}_${driver}_${client}_${amount}`.replace(/\s+/g, '_').toLowerCase();
+
+    // Add sequence number to allow identical trips on the same day within the SAME upload
+    fingerprintCounts[baseFingerprint] = (fingerprintCounts[baseFingerprint] || 0) + 1;
+    const fingerprint = `${baseFingerprint}_${fingerprintCounts[baseFingerprint]}`;
 
     return {
       id: Math.random().toString(36).substr(2, 9),
