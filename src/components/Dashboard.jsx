@@ -294,20 +294,27 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                                     <Calendar className="text-indigo-500" size={20} /> Facturación por Semana
                                 </h3>
                                 <div className="space-y-4">
-                                    {Object.entries(summary.byWeek).map(([week, total]) => (
-                                        <div key={week} className="group">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-slate-600 font-medium text-sm">{week}</span>
-                                                <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(total)}</span>
+                                    {Object.entries(summary.byWeek)
+                                        .sort((a, b) => {
+                                            // Extract numbers from "Semana X"
+                                            const numA = parseInt(a[0].replace(/\D/g, '')) || 0;
+                                            const numB = parseInt(b[0].replace(/\D/g, '')) || 0;
+                                            return numA - numB;
+                                        })
+                                        .map(([week, total]) => (
+                                            <div key={week} className="group">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className="text-slate-600 font-medium text-sm">{week}</span>
+                                                    <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(total)}</span>
+                                                </div>
+                                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-indigo-500 rounded-full"
+                                                        style={{ width: `${Math.max(5, (total / summary.total) * 100 * 5)}%` }}
+                                                    />
+                                                </div>
                                             </div>
-                                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-indigo-500 rounded-full"
-                                                    style={{ width: `${Math.max(5, (total / summary.total) * 100 * 5)}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
                                 </div>
                             </div>
                         </div>
