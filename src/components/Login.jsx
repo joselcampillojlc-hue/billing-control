@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Lock, ArrowRight, ShieldCheck, Truck } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export default function Login({ onLogin }) {
@@ -13,11 +13,9 @@ export default function Login({ onLogin }) {
         setError(false);
 
         const adminPass = import.meta.env.VITE_ADMIN_PASSWORD;
-        const userPass = import.meta.env.VITE_APP_PASSWORD; // Legacy/Fallback
         const intermodalPass = import.meta.env.VITE_INTERMODAL_PASSWORD;
         const nacionalPass = import.meta.env.VITE_NACIONAL_PASSWORD;
 
-        // Small artificial delay for "security feel"
         setTimeout(() => {
             if (password === adminPass) {
                 onLogin({ role: 'admin', department: 'all' });
@@ -25,80 +23,88 @@ export default function Login({ onLogin }) {
                 onLogin({ role: 'user', department: 'Intermodal' });
             } else if (password === nacionalPass) {
                 onLogin({ role: 'user', department: 'Nacional' });
-            } else if (password === userPass) {
-                // Fallback for old shared password, treat as read-only or default to Intermodal if needed
-                // For now, let's map it to All (View Only) or remove it. 
-                // Let's assume userPass is deprecated or maps to 'all' view-only.
-                onLogin({ role: 'user', department: 'all' });
             } else {
                 setError(true);
                 setLoading(false);
-                setTimeout(() => setError(false), 2000); // Clear error after 2 seconds
+                setTimeout(() => setError(false), 2000);
             }
-        }, 600);
+        }, 800);
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl shadow-blue-900/10 border border-white/50 backdrop-blur-sm p-8 animate-in fade-in zoom-in-95 duration-500">
-                <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 mx-auto mb-4">
-                        <ShieldCheck size={32} />
-                    </div>
-                    <h1 className="text-2xl font-bold text-slate-900">Control Facturación</h1>
-                    <p className="text-slate-500 text-sm mt-1">Acceso Restringido</p>
-                </div>
+        <div className="min-h-screen flex items-center justify-center p-6 bg-[#0a0b14] relative overflow-hidden">
+            {/* Animated Background Elements */}
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse-soft"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px] animate-pulse-soft" style={{ animationDelay: '2s' }}></div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                            Contraseña de Acceso
-                        </label>
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                <Lock size={18} />
-                            </div>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className={clsx(
-                                    "block w-full pl-10 pr-4 py-3 bg-slate-50 border rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 transition-all",
-                                    error
-                                        ? "border-red-300 focus:ring-red-200 focus:border-red-400"
-                                        : "border-slate-200 focus:ring-blue-100 focus:border-blue-500"
-                                )}
-                                placeholder="Introduce tu clave..."
-                                autoFocus
-                            />
+            <div className="w-full max-w-[440px] z-10 animate-fade-in">
+                <div className="glass-card p-10 relative overflow-hidden">
+                    {/* Subtle Internal Glow */}
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent"></div>
+
+                    <div className="text-center mb-10">
+                        <div className="w-20 h-20 bg-indigo-600 rounded-[24px] flex items-center justify-center text-white shadow-[0_0_40px_rgba(99,102,241,0.4)] mx-auto mb-6 transform hover:rotate-6 transition-transform duration-500">
+                            <Truck size={40} strokeWidth={2.5} />
                         </div>
-                        {error && (
-                            <p className="text-red-500 text-xs mt-2 font-medium flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
-                                ⚠️ Contraseña incorrecta
-                            </p>
-                        )}
+                        <h1 className="text-4xl font-extrabold text-white tracking-tighter uppercase mb-2">MG Transport</h1>
+                        <p className="text-slate-400 font-medium tracking-widest text-[10px] uppercase">Control de Facturación • v3.0</p>
                     </div>
 
-                    <button
-                        type="submit"
-                        disabled={loading || !password}
-                        className={clsx(
-                            "w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white transition-all shadow-lg",
-                            loading || !password
-                                ? "bg-slate-300 cursor-not-allowed shadow-none"
-                                : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/30 hover:shadow-blue-500/40 hover:-translate-y-0.5"
-                        )}
-                    >
-                        {loading ? 'Verificando...' : 'Entrar al Sistema'}
-                        {!loading && <ArrowRight size={18} />}
-                    </button>
-                </form>
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <div className="space-y-2">
+                            <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] ml-1">
+                                Clave de Acceso
+                            </label>
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                                    <Lock size={18} />
+                                </div>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className={clsx(
+                                        "block w-full pl-12 pr-4 py-4 bg-white/5 border rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 transition-all duration-300",
+                                        error
+                                            ? "border-red-500/50 focus:ring-red-500/30"
+                                            : "border-white/10 focus:ring-indigo-500/50 focus:bg-white/10"
+                                    )}
+                                    placeholder="••••••••"
+                                    autoFocus
+                                />
+                            </div>
+                            {error && (
+                                <p className="text-red-400 text-[11px] mt-2 font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-1 px-1 text-center justify-center">
+                                    Acceso denegado. Reinténtalo.
+                                </p>
+                            )}
+                        </div>
 
-                <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-                    <p className="text-[10px] text-slate-400 font-medium">
-                        Sistema Seguro • MG TRANSPORT
-                    </p>
+                        <button
+                            type="submit"
+                            disabled={loading || !password}
+                            className={clsx(
+                                "w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all duration-500 relative overflow-hidden group",
+                                loading || !password
+                                    ? "bg-white/5 text-slate-600 cursor-not-allowed border border-white/5"
+                                    : "bg-indigo-600 text-white shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:-translate-y-1 active:scale-[0.98]"
+                            )}
+                        >
+                            {loading ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            ) : (
+                                <>
+                                    <span>Entrar al Sistema</span>
+                                    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                </>
+                            )}
+                        </button>
+                    </form>
                 </div>
+
+                <p className="text-center text-[10px] text-slate-600 font-bold uppercase tracking-[0.3em] mt-8 opacity-50">
+                    Trusted by logistics teams worldwide
+                </p>
             </div>
         </div>
     );

@@ -1,33 +1,55 @@
 import * as XLSX from 'xlsx';
-import { getISOWeek, format, parse, isValid } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseDate, getWeekKey, getMonthKey } from './dateUtils';
 
 // Map user's headers to internal keys
 const FIELD_MAP = {
-  date: ['F.Carga', 'Fecha', 'F. Carga', 'FEC. CARGA'],
-  driver: ['Conductor', 'Nombre Conductor', 'CHOFER'],
-  clientName: ['Nomb.Cliente', 'Cliente', 'Nombre Cliente', 'CLIENTE'],
-  amount: ['Euros', 'Importe', 'Total', 'EUROS'],
-  kms: ['Kms', 'KM', 'Kilómetros', 'KILOMETROS']
+  date: ['F.Carga', 'Fecha', 'F. Carga', 'FEC. CARGA', 'F carga'],
+  driver: ['Conductor', 'Nombre Conductor', 'CHOFER', 'CONDUCTOR', 'chofer'],
+  clientName: ['Nombre Cliente', 'Nomb.Cliente', 'Cliente', 'CLIENTE', 'cliente'],
+  amount: ['Euros', 'Importe', 'Total', 'EUROS', 'EURO', 'euros'],
+  kms: ['Kms', 'KM', 'Kilómetros', 'KILOMETROS', 'km']
+};
+
+// Helper to normalize strings for comparison (remove accents, spaces, special chars)
+const normalize = (str) => {
+  if (!str) return '';
+  return String(str)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove accents
+    .replace(/[^a-zA-Z0-9]/g, '')    // Remove non-alphanumeric
+    .toLowerCase()
+    .trim();
+};
+
+const parseSpanishAmount = (val) => {
+  if (typeof val === 'number') return val;
+  if (!val) return 0;
+  // Convert "1.200,50" to "1200.50"
+  const clean = String(val)
+    .replace(/\s/g, '')      // Remove spaces
+    .replace(/\./g, '')      // Remove thousand separator (dot)
+    .replace(/,/g, '.');     // Replace decimal separator (comma) with dot
+  return parseFloat(clean) || 0;
 };
 
 /**
  * Finds the correct key in the row object regardless of case or slight variations.
  */
 const getFieldValue = (row, fieldKey) => {
-  const possibleHeaders = FIELD_MAP[fieldKey];
-  if (!possibleHeaders) return null;
+  if (row[fieldKey] !== undefined) return row[fieldKey];
 
-  // 1. Try exact matches from map
-  for (const header of possibleHeaders) {
-    if (row[header] !== undefined) return row[header];
-  }
+  const possibleHeaders = FIELD_MAP[fieldKey] || [];
+  const normalizedPossible = possibleHeaders.map(normalize);
 
-  // 2. Try case-insensitive search through all row keys
   const rowKeys = Object.keys(row);
-  for (const header of possibleHeaders) {
-    const foundKey = rowKeys.find(k => k.toLowerCase() === header.toLowerCase());
-    if (foundKey) return row[foundKey];
+
+  for (const key of rowKeys) {
+    const normKey = normalize(key);
+    if (normalizedPossible.includes(normKey)) {
+      return row[key];
+    }
   }
 
   return null;
@@ -35,8 +57,6 @@ const getFieldValue = (row, fieldKey) => {
 
 /**
  * Parses the uploaded Excel file.
- * @param {File} file 
- * @returns {Promise<Array>} Raw data array
  */
 export const parseExcel = (file) => {
   return new Promise((resolve, reject) => {
@@ -65,57 +85,32 @@ export const processBillingData = (data) => {
   const fingerprintCounts = {}; // Track occurrences for sequence
 
   const processed = data.map(row => {
-    // Parse date. Assuming DD/MM/YYYY or Excel serial date.
-    let dateObj;
     const rawDate = getFieldValue(row, 'date');
+    const dateObj = parseDate(rawDate);
 
-    // Handle Excel serial date or string
-    if (typeof rawDate === 'number') {
-      dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-    } else if (typeof rawDate === 'string') {
-      // Check if it's a numeric string (Excel serial stored as text)
-      if (/^\d+$/.test(rawDate)) {
-        const serial = parseInt(rawDate, 10);
-        dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
-      } else {
-        // Try parsing standard string date
-        dateObj = new Date(rawDate);
+    // Si la fecha no es válida, no usamos hoy, sino null
+    const isInvalid = !dateObj;
 
-        // If invalid, try DD/MM/YYYY manually if needed
-        if (isNaN(dateObj) && rawDate.includes('/')) {
-          const part = rawDate.split('/');
-          if (part.length === 3) {
-            // Assume DD/MM/YYYY
-            dateObj = new Date(part[2], part[1] - 1, part[0]);
-          }
-        }
-      }
-    }
+    const amount = parseSpanishAmount(getFieldValue(row, 'amount'));
+    const driver = getFieldValue(row, 'driver') || 'Desconocido';
+    const client = getFieldValue(row, 'clientName') || 'Desconocido';
 
-    if (!isValid(dateObj)) dateObj = new Date(); // Fallback or error
+    const dateStr = dateObj ? format(dateObj, 'yyyy-MM-dd') : 'fecha-invalida';
+    const sanitizeId = (str) => String(str).replace(/[^\w-]/g, '_').toLowerCase();
+    const baseFingerprint = `${dateStr}_${sanitizeId(driver)}_${sanitizeId(client)}_${amount}`;
 
-    const amount = parseFloat(getFieldValue(row, 'amount')) || 0;
-    const driver = getFieldValue(row, 'driver') || 'Unknown';
-    const client = getFieldValue(row, 'clientName') || 'Unknown';
-
-    // Generate a unique fingerprint for this row to prevent duplicates across uploads
-    // Pattern: date_driver_client_amount_sequence
-    const dateStr = format(dateObj, 'yyyy-MM-dd');
-    const baseFingerprint = `${dateStr}_${driver}_${client}_${amount}`.replace(/\s+/g, '_').toLowerCase();
-
-    // Add sequence number to allow identical trips on the same day within the SAME upload
     fingerprintCounts[baseFingerprint] = (fingerprintCounts[baseFingerprint] || 0) + 1;
     const fingerprint = `${baseFingerprint}_${fingerprintCounts[baseFingerprint]}`;
 
     return {
       id: Math.random().toString(36).substr(2, 9),
-      fingerprint, // Added for deduplication
+      fingerprint,
       driver,
       client,
       date: dateObj,
-      week: getISOWeek(dateObj),
-      month: format(dateObj, 'MMM yyyy', { locale: es }),
-      monthIndex: format(dateObj, 'yyyy-MM'), // Helper for sorting
+      week: isInvalid ? 'S/F' : getWeekKey(dateObj),
+      month: isInvalid ? 'Sin Fecha' : getMonthKey(dateObj),
+      monthIndex: dateObj ? format(dateObj, 'yyyy-MM') : '0000-00',
       amount: amount,
       raw: row
     };
@@ -133,23 +128,24 @@ export const processBillingData = (data) => {
     totalAmount += item.amount;
 
     // Driver Grouping
-    if (!byDriver[item.driver]) byDriver[item.driver] = { total: 0, count: 0, weeks: {}, months: {} };
+    if (!byDriver[item.driver]) byDriver[item.driver] = { total: 0, count: 0 };
     byDriver[item.driver].total += item.amount;
     byDriver[item.driver].count += 1;
 
     // Client Grouping
-    if (!byClient[item.client]) byClient[item.client] = { total: 0, count: 0, weeks: {}, months: {} };
+    if (!byClient[item.client]) byClient[item.client] = { total: 0, count: 0 };
     byClient[item.client].total += item.amount;
     byClient[item.client].count += 1;
 
     // Time Grouping (Global)
-    if (!byMonth[item.month]) byMonth[item.month] = 0;
-    byMonth[item.month] += item.amount;
+    const mKey = item.month;
+    if (!byMonth[mKey]) byMonth[mKey] = 0;
+    byMonth[mKey] += item.amount;
 
-    // Week grouping (key: "Week X - Month")
-    const weekKey = `Semana ${item.week}`;
-    if (!byWeek[weekKey]) byWeek[weekKey] = 0;
-    byWeek[weekKey] += item.amount;
+    // Week grouping
+    const wKey = item.week;
+    if (!byWeek[wKey]) byWeek[wKey] = 0;
+    byWeek[wKey] += item.amount;
   });
 
   return {
@@ -162,4 +158,33 @@ export const processBillingData = (data) => {
       byWeek
     }
   };
+};
+
+/**
+ * Generates and downloads a sample Excel template for data import.
+ */
+export const downloadTemplate = () => {
+  const data = [
+    {
+      'F.Carga': '01/01/2024',
+      'Conductor': 'JUAN PEREZ',
+      'Nombre Cliente': 'CLIENTE EJEMPLO SL',
+      'Euros': 150.50,
+      'Kms': 45
+    },
+    {
+      'F.Carga': '02/01/2024',
+      'Conductor': 'ANTONIO RUIZ',
+      'Nombre Cliente': 'CLIENTE TEST SL',
+      'Euros': 210.00,
+      'Kms': 120
+    }
+  ];
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Plantilla");
+
+  // Generate buffer and download
+  XLSX.writeFile(workbook, "plantilla_importacion.xlsx");
 };

@@ -8,37 +8,49 @@ import { es } from 'date-fns/locale';
  * @returns {Date|null}
  */
 export function parseDate(rawDate) {
+    if (rawDate === null || rawDate === undefined || rawDate === '') return null;
+
     let dateObj;
 
-    if (rawDate === null || rawDate === undefined) return null;
-
-    if (typeof rawDate === 'number') {
-        // Excel serial date
+    // Handle Firestore Timestamp or similar
+    if (rawDate && typeof rawDate.toDate === 'function') {
+        dateObj = rawDate.toDate();
+    } else if (typeof rawDate === 'number') {
+        // Excel serial date (Windows Excel uses 1900 epoch)
         dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-    } else if (typeof rawDate === 'string' && /^\d+$/.test(rawDate)) {
-        // String looking like a number (timestamp or serial)
-        // Heuristic: If it's small (e.g. < 100000), treat as serial. If large, timestamp.
-        // But for this app, we mostly see Excel serials.
-        const serial = parseInt(rawDate, 10);
-        // Excel serial 45000 is approx year 2023. Timestamp 1700000000 is 2023.
-        if (serial < 100000) {
-            dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
+    } else if (typeof rawDate === 'string') {
+        const trimmed = rawDate.trim();
+        if (/^\d+$/.test(trimmed)) {
+            // String looking like a number
+            const serial = parseInt(trimmed, 10);
+            if (serial < 100000) {
+                dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
+            } else {
+                dateObj = new Date(serial);
+            }
+        } else if (trimmed.includes('/')) {
+            // Try DD/MM/YYYY or D/M/YYYY
+            const parts = trimmed.split('/').map(p => p.trim());
+            if (parts.length === 3) {
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10);
+                let yearStr = parts[2];
+                if (yearStr.length === 2) yearStr = '20' + yearStr;
+                const year = parseInt(yearStr, 10);
+
+                // Validar que son números razonables
+                if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                    dateObj = new Date(year, month - 1, day);
+                }
+            }
         } else {
-            dateObj = new Date(serial);
+            const parsed = Date.parse(trimmed);
+            if (!isNaN(parsed)) {
+                dateObj = new Date(parsed);
+            }
         }
     } else if (rawDate instanceof Date) {
         dateObj = rawDate;
-    } else {
-        // string
-        dateObj = new Date(rawDate);
-        if (isNaN(dateObj) && typeof rawDate === 'string' && rawDate.includes('/')) {
-            // Try DD/MM/YYYY
-            const part = rawDate.split('/');
-            if (part.length === 3) {
-                // Note: parts[1] is 1-indexed month
-                dateObj = new Date(part[2], part[1] - 1, part[0]);
-            }
-        }
     }
 
     if (!dateObj || isNaN(dateObj.getTime())) return null;
@@ -52,13 +64,14 @@ export function parseDate(rawDate) {
  * @returns {string}
  */
 export function getWeekKey(dateObj) {
-    if (!dateObj || isNaN(dateObj)) return 'Invalid Date';
+    const validDate = parseDate(dateObj);
+    if (!validDate) return 'Fecha No Válida';
 
     // Copy date so we don't modify the original
-    const target = new Date(dateObj.valueOf());
+    const target = new Date(validDate.valueOf());
 
     // ISO 8601 week number calculation
-    const dayNr = (dateObj.getDay() + 6) % 7;
+    const dayNr = (validDate.getDay() + 6) % 7;
     target.setDate(target.getDate() - dayNr + 3);
     const firstThursday = target.valueOf();
     target.setMonth(0, 1);
@@ -67,7 +80,7 @@ export function getWeekKey(dateObj) {
     }
     const weekNum = 1 + Math.ceil((firstThursday - target) / 604800000);
 
-    return `Semana ${weekNum} - ${dateObj.getFullYear()}`;
+    return `Semana ${weekNum} - ${validDate.getFullYear()}`;
 }
 
 /**
@@ -76,6 +89,7 @@ export function getWeekKey(dateObj) {
  * @returns {string}
  */
 export function getMonthKey(dateObj) {
-    if (!dateObj || isNaN(dateObj)) return 'Invalid Date';
-    return format(dateObj, 'MMM yyyy', { locale: es });
+    const validDate = parseDate(dateObj);
+    if (!validDate) return 'Fecha No Válida';
+    return format(validDate, 'MMM yyyy', { locale: es });
 }

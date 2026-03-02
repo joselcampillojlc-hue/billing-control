@@ -1,76 +1,84 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './supabase';
-import Upload from './components/Upload';
-import Dashboard from './components/Dashboard';
-import DataManagement from './components/DataManagement';
-import Login from './components/Login';
-import { LayoutDashboard, FileSpreadsheet, Settings, PieChart, PanelLeft, Trash2, Database, Truck, LogOut, Shield, UploadCloud } from 'lucide-react';
+import { db } from './firebase';
+import {
+  collection,
+  query,
+  onSnapshot,
+  getDocs,
+  doc,
+  writeBatch
+} from 'firebase/firestore';
+import {
+  LayoutDashboard,
+  FileSpreadsheet,
+  BarChart2,
+  Trash2,
+  Truck,
+  LogOut,
+  UploadCloud,
+  ChevronRight,
+  AlertTriangle
+} from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { parseDate, getWeekKey, getMonthKey } from './utils/dateUtils';
 
-// Custom minimal sidebar button
-function SidebarItem({ icon: Icon, label, active, onClick, variant = 'default', disabled = false }) {
-  const isDestructive = variant === 'destructive';
+// Components
+import Dashboard from './components/Dashboard';
+import Login from './components/Login';
+import DataManagement from './components/DataManagement';
+import Upload from './components/Upload';
+import Comparison from './components/Comparison';
 
-  if (disabled) return null;
-
+// Custom minimal nav button
+function NavItem({ icon: Icon, label, active, onClick }) {
   return (
     <button
       onClick={onClick}
       className={clsx(
-        "relative group flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 w-14 h-14",
+        "flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs uppercase tracking-widest transition-all whitespace-nowrap",
         active
-          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 ring-1 ring-white/20"
-          : isDestructive
-            ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
-            : "text-slate-400 hover:bg-slate-800 hover:text-white"
+          ? "bg-white text-black shadow-xl scale-105"
+          : "text-slate-400 hover:text-white hover:bg-white/10"
       )}
-      title={label}
     >
-      <Icon size={22} strokeWidth={active ? 2.5 : 2} />
-      {active && (
-        <span className="absolute -right-1 top-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.6)]"></span>
-      )}
+      <Icon size={16} strokeWidth={active ? 2.5 : 2} />
+      <span className="hidden md:inline">{label}</span>
+      <span className="md:hidden inline">{label.substring(0, 3)}</span>
     </button>
   );
 }
 
 // Validation Modal Component
 function ValidationErrorsModal({ errors, onClose }) {
-  if (!errors || errors.length === 0) return null;
-
+  if (errors.length === 0) return null;
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-6 bg-red-50 border-b border-red-100 flex items-center gap-4">
-          <div className="p-3 bg-red-100 rounded-full text-red-600">
-            <Shield size={24} />
-          </div>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 sm:p-12 animate-fade-in">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={onClose}></div>
+      <div className="glass-card max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col relative animate-scale-in">
+        <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/2">
           <div>
-            <h3 className="text-xl font-bold text-red-900">Errores de Validación</h3>
-            <p className="text-red-700 text-sm">Se encontraron {errors.length} filas con problemas que NO se han subido.</p>
+            <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Errores de Validación</h2>
+            <p className="text-red-400 text-xs font-bold uppercase tracking-widest mt-1">{errors.length} problemas encontrados</p>
           </div>
+          <button onClick={onClose} className="p-3 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-2xl transition-all">✕</button>
         </div>
-
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-          <div className="space-y-2">
-            {errors.map((err, idx) => (
-              <div key={idx} className="bg-white p-3 rounded-lg border border-red-100 shadow-sm flex gap-3 text-sm">
-                <span className="font-mono font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">Fila {err.row}</span>
-                <span className="text-slate-700">{err.reason}</span>
+        <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar">
+          {errors.map((err, i) => (
+            <div key={i} className="flex gap-6 p-6 rounded-3xl bg-red-500/5 border border-red-500/10 group hover:border-red-500/30 transition-all">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 font-black">
+                {err.row}
               </div>
-            ))}
-          </div>
+              <div>
+                <p className="text-white font-black uppercase tracking-tight text-sm mb-1">Fila {err.row}</p>
+                <p className="text-slate-400 text-sm font-medium">{err.reason}</p>
+              </div>
+            </div>
+          ))}
         </div>
-
-        <div className="p-4 border-t bg-white flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors font-medium"
-          >
-            Entendido, cerrar
+        <div className="p-8 border-t border-white/5 bg-white/2">
+          <button onClick={onClose} className="w-full py-4 bg-white text-black text-xs font-black uppercase tracking-[0.2em] rounded-2xl transition-all hover:bg-indigo-50 active:scale-95 shadow-xl">
+            Entendido, corregiré el archivo
           </button>
         </div>
       </div>
@@ -79,435 +87,259 @@ function ValidationErrorsModal({ errors, onClose }) {
 }
 
 function App() {
-  // Auth State
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem('auth_isAuthenticated') === 'true';
-  });
-  const [isAdmin, setIsAdmin] = useState(() => {
-    return localStorage.getItem('auth_role') === 'admin';
-  });
-  const [currentDepartment, setCurrentDepartment] = useState(() => {
-    return localStorage.getItem('auth_department') || 'all';
-  });
-
-  // Data State
   const [data, setData] = useState([]);
-
-  // Notification State
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [view, setView] = useState('dashboard');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [currentDepartment, setCurrentDepartment] = useState('all');
+  const [isProcessing, setIsProcessing] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [validationErrors, setValidationErrors] = useState([]); // Store validation errors
-  const [isLoadingData, setIsLoadingData] = useState(true); // Initial load state
-  const [isProcessing, setIsProcessing] = useState(false); // Blocking action state
+  const [validationErrors, setValidationErrors] = useState([]);
+
+  useEffect(() => {
+    // Check for saved session
+    const savedSession = localStorage.getItem('mg_auth');
+    if (savedSession) {
+      try {
+        const { isAdmin: savedIsAdmin, department: savedDept } = JSON.parse(savedSession);
+        setIsAuthenticated(true);
+        setIsAdmin(savedIsAdmin);
+        setCurrentDepartment(savedDept);
+      } catch (e) {
+        localStorage.removeItem('mg_auth');
+      }
+    }
+
+    let q = collection(db, 'billing_records');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const records = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setData(records);
+      setIsLoadingData(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const showNotification = (message, type = 'info', duration = 5000) => {
     setNotification({ message, type });
-    if (duration > 0 && type !== 'error') {
+    if (duration > 0) {
       setTimeout(() => setNotification(null), duration);
     }
   };
 
-  // Fetch Data from Supabase
-  const fetchData = async () => {
-    try {
-      // setIsLoadingData(true); // Don't block UI on background updates
-      let query = supabase.from('billing_records').select('*');
-
-      // Apply Department Filter if not 'all'
-      if (currentDepartment !== 'all') {
-        query = query.eq('department', currentDepartment);
-      }
-
-      const { data: records, error } = await query;
-
-      if (error) {
-        throw error;
-      }
-
-      setData(records || []);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      showNotification("Error de conexión: " + error.message, 'error', 0);
-    } finally {
-      setIsLoadingData(false);
-    }
-  };
-
-  // Subscribe to Realtime updates
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    // Initial Fetch
-    fetchData();
-
-    // Realtime Subscription
-    // Note: Supabase Realtime row-level filtering logic is complex.
-    // Simplest strategy: Listen to all changes on the table, but re-fetch with our query filter.
-    const channel = supabase
-      .channel('billing-control-calm')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'billing_records' },
-        (payload) => {
-          // console.log('Change received!', payload);
-          fetchData(); // Simplest strategy: re-fetch all. efficient enough for <10k rows.
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [isAuthenticated, currentDepartment]);
-
-  const [view, setView] = useState('dashboard'); // Default to dashboard
-
-  // Handle Login Logic
   const handleLogin = ({ role, department }) => {
+    const isAdminRole = role === 'admin';
     setIsAuthenticated(true);
-    setIsAdmin(role === 'admin');
+    setIsAdmin(isAdminRole);
     setCurrentDepartment(department);
-
-    localStorage.setItem('auth_isAuthenticated', 'true');
-    localStorage.setItem('auth_role', role);
-    localStorage.setItem('auth_department', department);
-    return true;
+    // Save session
+    localStorage.setItem('mg_auth', JSON.stringify({ isAdmin: isAdminRole, department }));
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsAdmin(false);
     setCurrentDepartment('all');
-    localStorage.removeItem('auth_isAuthenticated');
-    localStorage.removeItem('auth_role');
-    localStorage.removeItem('auth_department');
     setView('dashboard');
+    localStorage.removeItem('mg_auth');
   };
 
-  const handleDataLoaded = async (newData) => {
+  const handleDataLoaded = async (processedData) => {
+    setIsProcessing(true);
     try {
-      setIsProcessing(true);
-      showNotification("Analizando archivo...", 'info', 0); // Sticky
-      setValidationErrors([]);
-
-      // 1. Validate Data
-      const validRows = [];
-      const errors = [];
-
-      // We expect newData to be already processed by parseExcel and processBillingData in Upload.jsx
-      // which now includes 'fingerprint' and 'driver/client/amount' mapping.
-      newData.forEach((row, index) => {
-        const rowNum = index + 2;
-        if (!row.date) {
-          errors.push({ row: rowNum, reason: "No se pudo detectar la fecha o formato inválido" });
-          return;
-        }
-        if (!row.amount && row.amount !== 0) {
-          errors.push({ row: rowNum, reason: "No se pudo detectar el importe" });
-          return;
-        }
-        if (row.driver === 'Unknown') {
-          errors.push({ row: rowNum, reason: "No se pudo detectar el Conductor" });
-          return;
-        }
-        if (row.client === 'Unknown') {
-          errors.push({ row: rowNum, reason: "No se pudo detectar el Cliente" });
-          return;
-        }
-
-        // Heuristic: Check for swapped columns (Company in Driver field)
-        const conductorName = String(row.driver).toUpperCase();
-        if (conductorName.includes(' S.L') || conductorName.includes(' S.A') || conductorName.includes('LOGISTICA') || conductorName.includes('TRANSPORT')) {
-          errors.push({ row: rowNum, reason: `Error: El 'Conductor' parece ser una empresa (${row.driver}). Verifica las columnas.` });
-          return;
-        }
-
-        // Sanitize for Supabase
-        const cleanRow = {
-          'F.Carga': format(row.date, 'yyyy-MM-dd'),
-          'Conductor': row.driver,
-          'Nomb.Cliente': row.client,
-          'Euros': row.amount,
-          'department': row.department || currentDepartment,
-          'fingerprint': row.fingerprint
-        };
-
-        validRows.push(cleanRow);
-      });
-
-      if (errors.length > 0) setValidationErrors(errors);
-
-      if (validRows.length === 0) {
-        showNotification("No se encontraron filas válidas.", 'error', 0);
-        return;
-      }
-
-      // 2. Upload Valid Data using UPSERT on fingerprint
-      // Sequence numbers guarantee that valid identical rows have different fingerprints.
-      const batchSize = 100;
+      // Split into chunks of 500 (Firestore batch limit)
       const chunks = [];
-      for (let i = 0; i < validRows.length; i += batchSize) {
-        chunks.push(validRows.slice(i, i + batchSize));
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < processedData.length; i += CHUNK_SIZE) {
+        chunks.push(processedData.slice(i, i + CHUNK_SIZE));
       }
 
-      let successCount = 0;
-      let failCount = 0;
-      let lastError = null;
-
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        try {
-          showNotification(`Sincronizando bloque ${i + 1} de ${chunks.length}...`, 'info', 0);
-
-          // Use upsert with onConflict on fingerprint to prevent duplicates
-          const { error } = await supabase
-            .from('billing_records')
-            .upsert(chunk, { onConflict: 'fingerprint' });
-
-          if (error) throw error;
-
-          successCount += chunk.length;
-        } catch (e) {
-          console.error("Batch failed:", e);
-          lastError = e.message || JSON.stringify(e);
-          failCount += chunk.length;
-        }
+      for (const [index, chunk] of chunks.entries()) {
+        const batch = writeBatch(db);
+        chunk.forEach(row => {
+          if (!row.fingerprint) return;
+          const docRef = doc(db, 'billing_records', row.fingerprint);
+          batch.set(docRef, row);
+        });
+        await batch.commit();
+        console.log(`Pushed batch ${index + 1}/${chunks.length}`);
       }
 
+      showNotification("¡Datos sincronizados correctamente!", 'success');
       setView('dashboard');
-
-      if (failCount === 0 && errors.length === 0) {
-        showNotification(`✅ ÉXITO: ${successCount} registros sincronizados.`, 'success');
-      } else if (failCount === 0 && errors.length > 0) {
-        showNotification(`⚠️ PARCIAL: ${successCount} sincronizados. ${errors.length} errores.`, 'warning', 0);
-      } else {
-        showNotification(`❌ ERROR (${lastError}): ${successCount} procesados. ${failCount} fallados.`, 'error', 0);
-      }
-
     } catch (error) {
-      console.error("Critical upload error:", error);
-      showNotification("Error crítico: " + error.message, 'error', 0);
+      console.error("Firebase Sync Error:", error);
+      showNotification(`Error al guardar en Firebase: ${error.message}`, 'error');
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleReset = async () => {
-    if (confirm('¿Estás seguro de que quieres borrar todos los datos? Esta acción es irreversible y afectará a todos los usuarios.')) {
-      try {
-        showNotification("Borrando todos los datos...", 'info');
-
-        // Supabase truncate or delete all
-        // We can't easy truncate without admin API sometimes, but delete where id is not null works
-        const { error } = await supabase
-          .from('billing_records')
-          .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete everything that isn't a dummy uuid
-
-        if (error) throw error;
-
-        // Optimize: Trigger manual fetch immediately in case realtime lags
-        fetchData();
-
-        setView('upload');
-        showNotification("Todos los datos han sido borrados.", 'success');
-      } catch (e) {
-        console.error("Error clearing data:", e);
-        showNotification("Error al borrar datos: " + e.message, 'error');
-      }
+    if (!isAdmin) return;
+    setIsProcessing(true);
+    try {
+      const snapshot = await getDocs(collection(db, 'billing_records'));
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      showNotification("Base de datos formateada", 'success');
+      setView('dashboard');
+    } catch (e) {
+      showNotification("Error al formatear", 'error');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleDeleteMonth = async (monthStr) => {
-    if (confirm(`¿Borrar todos los datos de ${monthStr}?`)) {
-      showNotification(`Borrando datos de ${monthStr}...`, 'info');
-
-      const docsToDelete = data.filter(row => {
-        const dateObj = parseDate(row['F.Carga']);
-        if (!dateObj) return false;
-        return getMonthKey(dateObj) === monthStr;
-      });
-
-      if (docsToDelete.length === 0) return;
-      const idsToDelete = docsToDelete.map(d => d.id);
-
-      try {
-        const { error } = await supabase
-          .from('billing_records')
-          .delete()
-          .in('id', idsToDelete);
-
-        if (error) throw error;
-
-        fetchData();
-        showNotification(`Datos de ${monthStr} eliminados.`, 'success');
-      } catch (e) {
-        console.error("Error deleting month:", e);
-        showNotification("Error al borrar mes: " + e.message, 'error');
-      }
+  const handleDeleteMonth = async (m) => {
+    if (!confirm(`¿Estás seguro de eliminar todo el mes ${m}?`)) return;
+    const targets = data.filter(r => getMonthKey(parseDate(r['F.Carga'])) === m);
+    if (!targets.length) return;
+    setIsProcessing(true);
+    try {
+      const batch = writeBatch(db);
+      targets.forEach(r => batch.delete(doc(db, 'billing_records', r.id || r.fingerprint)));
+      await batch.commit();
+      showNotification(`Registros de ${m} eliminados`, 'success');
+    } catch (e) {
+      showNotification("Error al eliminar", 'error');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleDeleteWeek = async (weekStr) => {
-    if (confirm(`¿Borrar datos de ${weekStr}?`)) {
-      showNotification(`Borrando datos de ${weekStr}...`, 'info');
-
-      const docsToDelete = data.filter(row => {
-        const dateObj = parseDate(row['F.Carga']);
-        if (!dateObj) return false;
-        const key = getWeekKey(dateObj);
-        return key === weekStr;
-      });
-
-      if (docsToDelete.length === 0) {
-        showNotification("No se encontraron registros para esa semana (¿error de formato de fecha?)", 'warning');
-        return;
-      }
-
-      const idsToDelete = docsToDelete.map(d => d.id);
-
-      try {
-        const { error } = await supabase
-          .from('billing_records')
-          .delete()
-          .in('id', idsToDelete);
-
-        if (error) throw error;
-
-        fetchData();
-        showNotification(`Datos de ${weekStr} eliminados.`, 'success');
-      } catch (e) {
-        console.error("Error deleting week:", e);
-        showNotification("Error al borrar semana: " + e.message, 'error');
-      }
+  const handleDeleteWeek = async (w) => {
+    if (!confirm(`¿Estás seguro de eliminar la semana ${w}?`)) return;
+    const targets = data.filter(r => getWeekKey(parseDate(r['F.Carga'])) === w);
+    if (!targets.length) return;
+    setIsProcessing(true);
+    try {
+      const batch = writeBatch(db);
+      targets.forEach(r => batch.delete(doc(db, 'billing_records', r.id || r.fingerprint)));
+      await batch.commit();
+      showNotification(`Registros de la semana ${w} eliminados`, 'success');
+    } catch (e) {
+      showNotification("Error al eliminar", 'error');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-
-  // If no auth, show login
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  // If we have no data and are admin, we might want to default to upload, but standard users can't upload.
-  // So standard users see dashboard (empty). Admin sees upload if empty.
-  const currentView = view;
+  if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
   return (
-    <div className="min-h-screen flex relative font-sans selection:bg-indigo-100 selection:text-indigo-900">
-
-      {/* Blocking Overlay for Uploads */}
+    <div className="min-h-screen flex flex-col bg-transparent overflow-x-hidden">
       {isProcessing && (
-        <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-white cursor-wait animate-in fade-in duration-300">
-          <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mb-4"></div>
-          <h2 className="text-2xl font-bold">Procesando datos...</h2>
-          <p className="text-white/80 mt-2">Por favor no cierres la ventana</p>
+        <div className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-xl flex flex-col items-center justify-center text-white animate-fade-in">
+          <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mb-6 shadow-[0_0_30px_rgba(99,102,241,0.4)]"></div>
+          <h2 className="text-3xl font-black uppercase tracking-tighter">Procesando</h2>
+          <p className="text-indigo-400 font-medium mt-2">Sincronizando con la nube...</p>
         </div>
       )}
 
-      {/* Validation Modal */}
       <ValidationErrorsModal errors={validationErrors} onClose={() => setValidationErrors([])} />
 
-      {/* Notification Toast */}
       {notification && (
         <div className={clsx(
-          "fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-2xl border transition-all duration-300 animate-in slide-in-from-top-4",
-          notification.type === 'success' ? "bg-emerald-500 text-white border-emerald-600" :
-            notification.type === 'error' ? "bg-red-500 text-white border-red-600" :
-              notification.type === 'warning' ? "bg-amber-500 text-white border-amber-600" :
-                "bg-blue-500 text-white border-blue-600"
+          "fixed top-8 right-8 z-[200] px-8 py-5 rounded-2xl shadow-2xl border backdrop-blur-xl animate-fade-in flex items-center gap-4 min-w-[320px]",
+          notification.type === 'success' ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400" :
+            notification.type === 'error' ? "bg-red-500/20 border-red-500/30 text-red-400" :
+              notification.type === 'warning' ? "bg-amber-500/20 border-amber-500/30 text-amber-400" :
+                "bg-blue-500/20 border-blue-500/30 text-blue-400"
         )}>
-          <div className="flex items-center gap-3">
-            <div className="font-bold text-lg">
-              {notification.type === 'success' ? '✓' :
-                notification.type === 'error' ? '✕' :
-                  notification.type === 'warning' ? '⚠️' : 'ℹ'}
-            </div>
-            <p className="font-medium">{notification.message}</p>
-            <button onClick={() => setNotification(null)} className="ml-4 hover:bg-white/20 p-1 rounded">✕</button>
+          <div className="text-2xl font-black">
+            {notification.type === 'success' ? '✓' : notification.type === 'error' ? '✕' : 'ℹ'}
           </div>
+          <div className="flex-1">
+            <p className="font-bold uppercase tracking-tight text-[10px] opacity-70 mb-0.5">{notification.type}</p>
+            <p className="font-semibold text-white/90 text-sm">{notification.message}</p>
+          </div>
+          <button onClick={() => setNotification(null)} className="opacity-40 hover:opacity-100 transition-opacity">✕</button>
         </div>
       )}
 
-      {/* Sidebar */}
-      <div className="w-20 bg-slate-900 flex flex-col items-center py-6 gap-2 shadow-xl z-20">
-        <div className="p-3 bg-indigo-500/20 rounded-xl mb-4">
-          <Truck className="text-indigo-400" size={28} />
-        </div>
-
-        <SidebarItem
-          icon={LayoutDashboard}
-          label="Dash"
-          active={view === 'dashboard'}
-          onClick={() => setView('dashboard')}
-        />
-        <SidebarItem
-          icon={FileSpreadsheet}
-          label="Datos"
-          active={view === 'data'}
-          onClick={() => setView('data')}
-        />
-        {isAdmin && (
-          <SidebarItem
-            icon={UploadCloud}
-            label="Subir"
-            active={view === 'upload'}
-            onClick={() => setView('upload')}
-          />
-        )}
-
-        <div className="mt-auto flex flex-col items-center gap-2">
-          <SidebarItem
-            icon={LogOut}
-            label="Salir"
-            variant="destructive"
-            onClick={handleLogout}
-          />
-          <p className="text-[10px] text-slate-600 font-medium">JL Campillo - <span className="text-emerald-400">v2.0 (Supabase)</span></p>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 bg-slate-100 h-screen overflow-hidden flex flex-col">
-        {isLoadingData ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-4">
-            <div className="w-10 h-10 border-4 border-slate-300 border-t-indigo-500 rounded-full animate-spin"></div>
-            <p className="font-medium">Cargando datos desde Supabase...</p>
+      {/* Top Navbar */}
+      <nav className="w-full bg-black/40 backdrop-blur-xl border-b border-white/5 sticky top-0 z-[100]">
+        <div className="max-w-[1600px] mx-auto px-6 lg:px-10 h-[88px] flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-[0_0_20px_rgba(99,102,241,0.4)]">
+              <Truck size={24} strokeWidth={2.5} />
+            </div>
+            <div className="hidden lg:flex flex-col">
+              <span className="text-xl font-black text-white uppercase tracking-tighter leading-none">MG Transport</span>
+              <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-[0.2em] mt-0.5">Control de Facturación</span>
+            </div>
           </div>
-        ) : (
-          <div className="flex-1 overflow-auto">
-            {view === 'dashboard' && <Dashboard rawData={data} currentDepartment={currentDepartment} onDepartmentChange={setCurrentDepartment} isAdmin={isAdmin} />}
-            {view === 'data' && <DataManagement data={data} onDeleteMonth={handleDeleteMonth} onDeleteWeek={handleDeleteWeek} onResetAll={handleReset} isAdmin={isAdmin} />}
-            {view === 'upload' && isAdmin && (
-              <div className="p-8 max-w-4xl mx-auto">
-                <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
-                  <div className="p-8 border-b border-slate-100 bg-white">
-                    <h2 className="text-2xl font-bold text-slate-800">Cargar Archivo Excel</h2>
-                    <p className="text-slate-500 mt-2">Sube el archivo de facturación para actualizar el dashboard.</p>
-                  </div>
-                  <div className="p-8 bg-slate-50/50">
-                    <Upload onDataLoaded={handleDataLoaded} currentDepartment={currentDepartment} />
 
-                    <div className="mt-8 pt-8 border-t border-slate-200">
-                      <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                        <Trash2 size={16} />
-                        Zona de Peligro
-                      </h3>
-                      <button
-                        onClick={handleReset}
-                        className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors border border-red-200 flex items-center gap-2"
-                      >
-                        <Trash2 size={16} />
-                        Borrar todos los datos
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <NavItem icon={LayoutDashboard} label="Resumen" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
+            <NavItem icon={BarChart2} label="Comparativa" active={view === 'comparison'} onClick={() => setView('comparison')} />
+            <NavItem icon={FileSpreadsheet} label="Gestión" active={view === 'data'} onClick={() => setView('data')} />
+            {isAdmin && (
+              <NavItem icon={UploadCloud} label="Cargar Excel" active={view === 'upload'} onClick={() => setView('upload')} />
             )}
           </div>
-        )}
-      </div>
 
+          <div className="flex items-center gap-4">
+            <button onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-red-400 transition-colors uppercase tracking-widest font-black text-xs bg-white/5 py-2.5 px-5 rounded-xl hover:bg-red-500/10">
+              <LogOut size={16} /> <span className="hidden sm:inline">Salir</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Viewport */}
+      <main className="flex-1 w-full overflow-y-auto custom-scrollbar relative bg-[#0a0b14]">
+        <div className="absolute top-0 right-0 w-1/3 h-[500px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-1/3 h-[500px] bg-blue-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+
+        <div className="max-w-[1600px] mx-auto w-full p-6 lg:p-10 xl:p-12 relative z-10 flex flex-col min-h-[calc(100vh-88px)]">
+          {isLoadingData ? (
+            <div className="flex-1 flex flex-col items-center justify-center opacity-40 scale-90 min-h-[50vh]">
+              <div className="w-16 h-16 border-2 border-white/5 border-t-indigo-500 rounded-full animate-spin mb-8"></div>
+              <p className="text-xs font-black tracking-[0.4em] uppercase text-white/40">Sincronizando</p>
+            </div>
+          ) : (
+            <div className="flex-1 animate-fade-in-up">
+              {view === 'dashboard' && (
+                <Dashboard
+                  rawData={data}
+                  currentDepartment={currentDepartment}
+                  onDepartmentChange={setCurrentDepartment}
+                  onAddMore={() => setView('upload')}
+                  isAdmin={isAdmin}
+                />
+              )}
+
+              {view === 'comparison' && (
+                <Comparison data={data} />
+              )}
+
+              {view === 'data' && (
+                <DataManagement
+                  rawData={data}
+                  onDeleteMonth={handleDeleteMonth}
+                  onDeleteWeek={handleDeleteWeek}
+                  onReset={handleReset}
+                  isAdmin={isAdmin}
+                />
+              )}
+
+              {view === 'upload' && (
+                <Upload
+                  onDataLoaded={handleDataLoaded}
+                  currentDepartment={currentDepartment}
+                  onCancel={() => setView('dashboard')}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

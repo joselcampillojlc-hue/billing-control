@@ -1,104 +1,133 @@
 import React, { useMemo } from 'react';
-import { Trash2, Calendar, Database, AlertCircle } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { parseDate, getWeekKey, getMonthKey } from '../utils/dateUtils';
+import { Trash2, Calendar, AlertTriangle, RefreshCw, X, Database } from 'lucide-react';
+import { formatCurrency } from '../utils/format';
+import { parseDate, getMonthKey, getWeekKey } from '../utils/dateUtils';
+import { clsx } from 'clsx';
 
-export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onResetAll, isAdmin }) {
-
-    // Group data by Month
+export default function DataManagement({ rawData, onDeleteMonth, onDeleteWeek, onReset, isAdmin }) {
     const months = useMemo(() => {
         const groups = {};
-        data.forEach(row => {
+        rawData.forEach(row => {
             const dateObj = parseDate(row['F.Carga']);
             if (dateObj) {
                 const key = getMonthKey(dateObj);
-                groups[key] = (groups[key] || 0) + 1;
+                if (!groups[key]) groups[key] = { total: 0, count: 0 };
+                groups[key].total += parseFloat(row['Imp. Conductor'] || 0);
+                groups[key].count += 1;
             }
         });
-        return Object.entries(groups).sort((a, b) => b[1] - a[1]); // Sort by count for now
-    }, [data]);
+        return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+    }, [rawData]);
 
-    // Group data by Week
     const weeks = useMemo(() => {
         const groups = {};
-        data.forEach(row => {
+        rawData.forEach(row => {
             const dateObj = parseDate(row['F.Carga']);
             if (dateObj) {
                 const key = getWeekKey(dateObj);
-                groups[key] = (groups[key] || 0) + 1;
+                if (!groups[key]) groups[key] = { total: 0, count: 0 };
+                groups[key].total += parseFloat(row['Imp. Conductor'] || 0);
+                groups[key].count += 1;
             }
         });
-        return Object.entries(groups);
-    }, [data]);
+        return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+    }, [rawData]);
 
-    if (data.length === 0) {
+    if (!isAdmin) {
         return (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                <Database size={48} className="mb-4 opacity-50" />
-                <p>No hay datos cargados para gestionar.</p>
+            <div className="h-full flex items-center justify-center p-12">
+                <div className="glass-card p-12 text-center max-w-md animate-fade-in">
+                    <div className="w-20 h-20 bg-amber-500/20 text-amber-500 rounded-3xl flex items-center justify-center mx-auto mb-6 ring-1 ring-amber-500/30">
+                        <AlertTriangle size={40} />
+                    </div>
+                    <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-4">Acceso Restringido</h2>
+                    <p className="text-slate-400 font-medium leading-relaxed">Solo los administradores pueden gestionar los datos históricos del sistema.</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h1 className="text-2xl font-bold text-slate-800 mb-2 flex items-center gap-3">
-                <Database className="text-indigo-600" /> Gestión de Datos
-            </h1>
-            <p className="text-slate-500 mb-8">Administra los registros cargados, borra periodos específicos o reinicia todo.</p>
+        <div className="space-y-12 pb-20 animate-fade-in">
+            {/* Header */}
+            <div className="border-b border-white/5 pb-8">
+                <h1 className="text-4xl font-black text-white uppercase tracking-tighter mb-2">Gestión de Datos</h1>
+                <p className="text-slate-400 font-medium">Control y mantenimiento de registros históricos</p>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-
-                {/* Monthly Management */}
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">
-                        <span className="flex items-center gap-2"><Calendar size={18} className="text-blue-500" /> Por Meses</span>
-                        <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">{months.length} Periodos</span>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+                {/* Months Management */}
+                <div className="space-y-6">
+                    <div className="flex items-center gap-4 px-2">
+                        <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight">Cargas Mensuales</h3>
                     </div>
-                    <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto custom-scrollbar">
-                        {months.map(([month, count]) => (
-                            <div key={month} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors group">
-                                <div>
-                                    <p className="font-bold text-slate-700 capitalize">{month}</p>
-                                    <p className="text-xs text-slate-400">{count} registros</p>
+
+                    <div className="space-y-4">
+                        {months.map(([month, data]) => (
+                            <div key={month} className="glass-card p-6 flex items-center justify-between group glass-card-hover transition-all duration-500">
+                                <div className="flex items-center gap-6">
+                                    <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform ring-1 ring-white/5">
+                                        <Calendar size={24} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-lg font-black text-white capitalize mb-1">{month}</h4>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{data.count} Registros</span>
+                                            <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                                            <span className="text-xs font-mono font-bold text-indigo-400">{formatCurrency(data.total)}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                {isAdmin && (
+                                <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => onDeleteMonth(month)}
-                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 placeholder:opacity-100 focus:opacity-100"
-                                        title="Eliminar este mes"
+                                        className="p-4 rounded-2xl bg-red-500/10 text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white shadow-lg active:scale-95"
+                                        title="Eliminar Mes"
                                     >
-                                        <Trash2 size={18} />
+                                        <Trash2 size={20} />
                                     </button>
-                                )}
+                                </div>
                             </div>
                         ))}
+                        {months.length === 0 && (
+                            <p className="text-slate-600 font-black uppercase tracking-widest text-xs text-center py-10 opacity-50">No hay datos mensuales</p>
+                        )}
                     </div>
                 </div>
 
-                {/* Weekly Management */}
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">
-                        <span className="flex items-center gap-2"><Calendar size={18} className="text-indigo-500" /> Por Semanas</span>
-                        <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">{weeks.length} Periodos</span>
+                {/* Weeks Management */}
+                <div className="space-y-6">
+                    <div className="flex items-center gap-4 px-2">
+                        <div className="w-1.5 h-6 bg-blue-500 rounded-full"></div>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight">Cargas Semanales</h3>
                     </div>
-                    <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto custom-scrollbar">
-                        {weeks.map(([week, count]) => (
-                            <div key={week} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors group">
-                                <div>
-                                    <p className="font-bold text-slate-700">{week}</p>
-                                    <p className="text-xs text-slate-400">{count} registros</p>
+
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
+                        {weeks.map(([week, data]) => (
+                            <div key={week} className="glass-card p-6 flex items-center justify-between group glass-card-hover transition-all duration-500">
+                                <div className="flex items-center gap-6">
+                                    <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform ring-1 ring-white/5">
+                                        <Database size={24} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-lg font-black text-white">{week}</h4>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{data.count} Registros</span>
+                                            <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                                            <span className="text-xs font-mono font-bold text-blue-400">{formatCurrency(data.total)}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                {isAdmin && (
+                                <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => onDeleteWeek(week)}
-                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 placeholder:opacity-100 focus:opacity-100"
-                                        title="Eliminar esta semana"
+                                        className="p-4 rounded-2xl bg-red-500/10 text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white shadow-lg active:scale-95"
+                                        title="Eliminar Semana"
                                     >
-                                        <Trash2 size={18} />
+                                        <Trash2 size={20} />
                                     </button>
-                                )}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -106,25 +135,33 @@ export default function DataManagement({ data, onDeleteMonth, onDeleteWeek, onRe
             </div>
 
             {/* Danger Zone */}
-            {isAdmin && (
-                <div className="mt-10 p-6 rounded-xl border border-red-200 bg-red-50 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-red-100 rounded-full text-red-600">
-                            <AlertCircle size={24} />
-                        </div>
+            <div className="mt-20 border-t border-red-500/10 pt-12">
+                <div className="glass-card p-10 border-red-500/20 bg-red-500/5 overflow-hidden relative group">
+                    <div className="absolute -right-20 -top-20 w-64 h-64 bg-red-500/10 rounded-full blur-[100px] group-hover:bg-red-500/20 transition-all duration-500"></div>
+
+                    <div className="relative flex flex-col md:flex-row justify-between items-center gap-8">
                         <div>
-                            <h3 className="font-bold text-red-800">Zona de Peligro</h3>
-                            <p className="text-sm text-red-600">Esta acción borrará todos los datos almacenados permanentemente.</p>
+                            <div className="flex items-center gap-3 mb-3">
+                                <AlertTriangle className="text-red-500" size={24} strokeWidth={3} />
+                                <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Zona de Peligro</h3>
+                            </div>
+                            <p className="text-slate-400 font-medium max-w-xl">
+                                Esta acción eliminará permanentemente todos los registros del sistema. Esta operación no se puede deshacer. Por favor, asegúrese de tener una copia de seguridad.
+                            </p>
                         </div>
+                        <button
+                            onClick={() => {
+                                if (window.confirm('¿ESTÁS ABSOLUTAMENTE SEGURO? Esta acción borrará TODO el historial permanentemente.')) {
+                                    onReset();
+                                }
+                            }}
+                            className="bg-red-600 hover:bg-red-500 text-white text-xs font-black uppercase tracking-[0.2em] rounded-2xl px-12 py-5 transition-all shadow-[0_0_30px_rgba(239,68,68,0.2)] hover:shadow-[0_0_40px_rgba(239,68,68,0.4)] active:scale-95 flex items-center gap-4 shrink-0"
+                        >
+                            <RefreshCw size={20} /> Formatear Base de Datos
+                        </button>
                     </div>
-                    <button
-                        onClick={onResetAll}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-2"
-                    >
-                        <Trash2 size={18} /> Borrar Todo
-                    </button>
                 </div>
-            )}
+            </div>
         </div>
     );
 }

@@ -8,144 +8,178 @@ import Comparison from './Comparison';
 import { parseDate, getWeekKey, getMonthKey } from '../utils/dateUtils';
 
 function StatCard({ title, value, icon: Icon, color }) {
-    const bgColors = {
-        success: 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30',
-        primary: 'bg-blue-600 text-white shadow-lg shadow-blue-500/30',
-        warning: 'bg-amber-500 text-white shadow-lg shadow-amber-500/30',
-        accent: 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+    const accents = {
+        success: 'text-emerald-400 group-hover:text-emerald-300',
+        primary: 'text-blue-400 group-hover:text-blue-300',
+        warning: 'text-amber-400 group-hover:text-amber-300',
+        accent: 'text-indigo-400 group-hover:text-indigo-300'
     };
 
     return (
-        <div className={`bg-white p-6 rounded-xl border border-slate-200 border-t-4 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow ${color === 'success' ? 'border-t-emerald-500' :
-            color === 'primary' ? 'border-t-blue-500' :
-                color === 'warning' ? 'border-t-amber-500' :
-                    'border-t-indigo-500'
-            }`}>
-            <div className={`p-4 rounded-xl ${bgColors[color] || 'bg-slate-100'}`}>
-                <Icon size={24} />
-            </div>
-            <div>
-                <p className="text-slate-500 text-sm font-medium">{title}</p>
-                <p className="text-3xl font-bold text-slate-800 tracking-tight">{value}</p>
+        <div className="glass-card glass-card-hover p-8 group overflow-hidden relative">
+            {/* Background Glow */}
+            <div className={`absolute -right-4 -top-4 w-24 h-24 blur-3xl opacity-10 transition-opacity group-hover:opacity-20 ${color === 'success' ? 'bg-emerald-500' :
+                color === 'primary' ? 'bg-blue-500' :
+                    color === 'warning' ? 'bg-amber-500' : 'bg-indigo-500'
+                }`}></div>
+
+            <div className="relative flex items-center gap-6">
+                <div className={`p-4 rounded-2xl bg-white/5 border border-white/5 transition-all duration-500 group-hover:scale-110 group-hover:border-white/10 ${accents[color]}`}>
+                    <Icon size={28} />
+                </div>
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1">{title}</p>
+                    <p className="text-3xl font-black text-white tracking-tighter leading-none">{value}</p>
+                </div>
             </div>
         </div>
     );
 }
 
 // Visual Bar Component
-function DataBar({ value, max, colorClass = "bg-blue-600" }) {
+function DataBar({ value, max, colorClass = "bg-indigo-500" }) {
     const percentage = Math.max(5, Math.min(100, (value / max) * 100));
     return (
-        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mt-3">
+        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mt-3 ring-1 ring-white/5">
             <div
-                className={`h-full rounded-full ${colorClass}`}
+                className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(99,102,241,0.3)] ${colorClass}`}
                 style={{ width: `${percentage}%` }}
             />
         </div>
     );
 }
 
-export default function Dashboard({ rawData, currentDepartment, onDepartmentChange, onAddMore, onReset, isAdmin }) {
-    const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'drivers', 'clients', 'comparison'
+export default function Dashboard({ rawData, currentDepartment, onDepartmentChange, onAddMore, isAdmin }) {
+    const [activeTab, setActiveTab] = useState('overview');
     const [selectedMonth, setSelectedMonth] = useState('all');
     const [selectedWeek, setSelectedWeek] = useState('all');
+    const [selectedClient, setSelectedClient] = useState('all');
 
-    // Reset week when month changes
     const handleMonthChange = (e) => {
         setSelectedMonth(e.target.value);
         setSelectedWeek('all');
     };
 
-    // Extract all available months
     const availableMonths = useMemo(() => {
         const months = new Set();
         rawData.forEach(row => {
-            const dateObj = parseDate(row['F.Carga']);
-            if (dateObj) {
-                months.add(getMonthKey(dateObj));
-            }
+            if (currentDepartment !== 'all' && row.department && row.department !== currentDepartment) return;
+            if (row.month) months.add(row.month);
         });
-        return Array.from(months);
-    }, [rawData]);
+        return Array.from(months).sort((a, b) => a.localeCompare(b));
+    }, [rawData, currentDepartment]);
 
-    // Extract available weeks based on selected Month
     const availableWeeks = useMemo(() => {
         const weeks = new Set();
         rawData.forEach(row => {
-            const dateObj = parseDate(row['F.Carga']);
-            if (dateObj) {
-                // Only add if it belongs to selected month (or if all months selected)
-                if (selectedMonth === 'all' || getMonthKey(dateObj) === selectedMonth) {
-                    weeks.add(getWeekKey(dateObj));
-                }
+            if (currentDepartment !== 'all' && row.department && row.department !== currentDepartment) return;
+            if (selectedClient !== 'all' && row.client !== selectedClient) return;
+            if (row.month && (selectedMonth === 'all' || row.month === selectedMonth)) {
+                if (row.week) weeks.add(row.week);
             }
         });
         return Array.from(weeks).sort((a, b) => {
-            // Simple string sort works for "Semana X - YEAR" usually, but ideally split numbers
             const numA = parseInt(a.match(/Semana (\d+)/)?.[1] || 0);
             const numB = parseInt(b.match(/Semana (\d+)/)?.[1] || 0);
             return numA - numB;
         });
-    }, [rawData, selectedMonth]);
+    }, [rawData, selectedMonth, currentDepartment, selectedClient]);
 
-    // Filter data
+    const availableClients = useMemo(() => {
+        const clients = new Set();
+        rawData.forEach(row => {
+            if (currentDepartment !== 'all' && row.department && row.department !== currentDepartment) return;
+            if (row.client) clients.add(row.client);
+        });
+        return Array.from(clients).sort();
+    }, [rawData, currentDepartment]);
+
     const filteredData = useMemo(() => {
         return rawData.filter(row => {
-            const dateObj = parseDate(row['F.Carga']);
-            if (!dateObj) return false;
+            if (currentDepartment !== 'all' && row.department && row.department !== currentDepartment) return false;
 
-            // Month Filter
-            if (selectedMonth !== 'all' && getMonthKey(dateObj) !== selectedMonth) {
-                return false;
-            }
+            // Usar los campos ya calculados que vienen de Firebase para evitar discrepancias
+            const mKey = row.month || 'Sin Fecha';
+            const wKey = row.week || 'S/F';
 
-            // Week Filter
-            if (selectedWeek !== 'all') {
-                if (getWeekKey(dateObj) !== selectedWeek) return false;
-            }
-
+            if (selectedMonth !== 'all' && mKey !== selectedMonth) return false;
+            if (selectedWeek !== 'all' && wKey !== selectedWeek) return false;
+            if (selectedClient !== 'all' && row.client !== selectedClient) return false;
             return true;
         });
-    }, [rawData, selectedMonth, selectedWeek]);
+    }, [rawData, currentDepartment, selectedMonth, selectedWeek, selectedClient]);
 
-    const { summary } = useMemo(() => processBillingData(filteredData), [filteredData]);
+    // Recalcular el resumen solo sobre los datos filtrados
+    const { summary } = useMemo(() => {
+        // En el dashboard, como ya están procesados, solo sumamos lo que hay
+        const byDriver = {};
+        const byClient = {};
+        const byMonth = {};
+        const byWeek = {};
+        let total = 0;
+
+        filteredData.forEach(item => {
+            const amt = item.amount || 0;
+            total += amt;
+
+            if (!byDriver[item.driver]) byDriver[item.driver] = { total: 0, count: 0 };
+            byDriver[item.driver].total += amt;
+            byDriver[item.driver].count += 1;
+
+            if (!byClient[item.client]) byClient[item.client] = { total: 0, count: 0 };
+            byClient[item.client].total += amt;
+            byClient[item.client].count += 1;
+
+            const m = item.month || 'Sin Fecha';
+            byMonth[m] = (byMonth[m] || 0) + amt;
+
+            const w = item.week || 'S/F';
+            byWeek[w] = (byWeek[w] || 0) + amt;
+        });
+
+        return { summary: { total, byDriver, byClient, byMonth, byWeek } };
+    }, [filteredData]);
 
     const formatCurrency = (amount) =>
         new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 
     return (
-        <div className="flex flex-col h-screen max-h-[calc(100vh-60px)] fade-in">
+        <div className="flex flex-col h-full space-y-8 pb-10">
             {/* Header Area */}
-            <div className="shrink-0 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-6 pb-6 border-b border-white/5">
                 <div>
-                    <h1 className="text-2xl text-slate-900 font-bold tracking-tight flex items-center gap-3">
-                        Panel de Control MG TRANSPORT
+                    <div className="flex items-center gap-4 mb-2">
+                        <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Panel de Control</h1>
                         {currentDepartment !== 'all' && (
-                            <span className={`text-sm px-3 py-1 rounded-full border flex items-center gap-2 ${currentDepartment === 'Intermodal'
-                                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                : 'bg-red-50 text-red-700 border-red-200'
-                                }`}>
-                                {currentDepartment === 'Intermodal' ? '🚢 Intermodal' : <><Truck size={14} /> Nacional</>}
+                            <span className={clsx(
+                                "text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest border",
+                                currentDepartment === 'Intermodal' ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" : "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                            )}>
+                                {currentDepartment}
                             </span>
                         )}
-                    </h1>
-                    <p className="text-sm text-slate-500 font-medium">
-                        {selectedMonth === 'all' && selectedWeek === 'all' ? 'Mostrando todos los periodos' :
-                            selectedWeek !== 'all' ? `Mostrando: ${selectedWeek}` :
-                                `Mostrando datos de: ${selectedMonth}`}
+                    </div>
+                    <p className="text-slate-400 font-medium tracking-wide">
+                        {selectedWeek !== 'all' ? `Periodo: ${selectedWeek}` : selectedMonth !== 'all' ? `Mes: ${selectedMonth}` : 'Visión Global de Facturación'}
                     </p>
+                    {summary.byMonth['Sin Fecha'] > 0 && (
+                        <div className="mt-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-xl">
+                            <AlertTriangle size={14} className="text-amber-500" />
+                            <p className="text-[10px] font-bold text-amber-200 uppercase tracking-widest">
+                                ¡Aviso! Hay {formatCurrency(summary.byMonth['Sin Fecha'])} sin fecha detectada. Revisa el formato de tu Excel.
+                            </p>
+                        </div>
+                    )}
                 </div>
 
-                <div className="flex flex-wrap gap-3 items-center">
+                <div className="flex flex-wrap gap-4 items-center">
                     {isAdmin && (
-                        <div className="relative animate-in fade-in slide-in-from-left-4">
-                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-indigo-500">
-                                <Globe size={16} />
-                            </div>
+                        <div className="relative group">
+                            <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-hover:text-indigo-400 transition-colors" />
                             <select
                                 value={currentDepartment}
                                 onChange={(e) => onDepartmentChange(e.target.value)}
-                                className="pl-10 pr-8 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full appearance-none cursor-pointer hover:bg-indigo-100 transition shadow-sm font-bold"
+                                className="pl-11 pr-10 py-3 bg-white/5 border border-white/10 text-white text-xs font-bold uppercase tracking-widest rounded-2xl focus:ring-1 focus:ring-indigo-500/50 appearance-none cursor-pointer hover:bg-white/10 transition-all outline-none"
                             >
                                 <option value="all">🌍 Global</option>
                                 <option value="Intermodal">🚢 Intermodal</option>
@@ -153,219 +187,177 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                             </select>
                         </div>
                     )}
-
-                    {/* Month Filter */}
-                    <div className="relative">
-                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                            <Filter size={16} />
-                        </div>
+                    <div className="relative group">
+                        <Users size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-hover:text-indigo-400 transition-colors" />
                         <select
-                            value={selectedMonth}
-                            onChange={handleMonthChange}
-                            className="pl-10 pr-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full appearance-none cursor-pointer hover:bg-slate-50 transition shadow-sm font-medium"
+                            value={selectedClient}
+                            onChange={(e) => setSelectedClient(e.target.value)}
+                            className="pl-11 pr-10 py-3 bg-white/5 border border-white/10 text-white text-xs font-bold uppercase tracking-widest rounded-2xl focus:ring-1 focus:ring-indigo-500/50 appearance-none cursor-pointer hover:bg-white/10 transition-all outline-none"
                         >
-                            <option value="all">Todos los Meses</option>
-                            {availableMonths.map(month => (
-                                <option key={month} value={month}>{month}</option>
+                            <option value="all">Clientes</option>
+                            {availableClients.map(client => (
+                                <option key={client} value={client}>{client}</option>
                             ))}
                         </select>
                     </div>
 
-                    {/* Week Filter */}
-                    <div className="relative">
-                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                            <Calendar size={16} />
-                        </div>
+                    <div className="relative group">
+                        <Filter size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-hover:text-indigo-400 transition-colors" />
+                        <select
+                            value={selectedMonth}
+                            onChange={handleMonthChange}
+                            className="pl-11 pr-10 py-3 bg-white/5 border border-white/10 text-white text-xs font-bold uppercase tracking-widest rounded-2xl focus:ring-1 focus:ring-indigo-500/50 appearance-none cursor-pointer hover:bg-white/10 transition-all outline-none"
+                        >
+                            <option value="all">Todos los Meses</option>
+                            {availableMonths.map(month => <option key={month} value={month}>{month}</option>)}
+                        </select>
+                    </div>
+
+                    <div className="relative group">
+                        <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-hover:text-indigo-400 transition-colors" />
                         <select
                             value={selectedWeek}
                             onChange={(e) => setSelectedWeek(e.target.value)}
-                            className={clsx(
-                                "pl-10 pr-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full appearance-none cursor-pointer hover:bg-slate-50 transition shadow-sm font-medium",
-                                availableWeeks.length === 0 && "opacity-50 cursor-not-allowed bg-slate-100"
-                            )}
                             disabled={availableWeeks.length === 0}
+                            className="pl-11 pr-10 py-3 bg-white/5 border border-white/10 text-white text-xs font-bold uppercase tracking-widest rounded-2xl focus:ring-1 focus:ring-indigo-500/50 appearance-none cursor-pointer hover:bg-white/10 transition-all outline-none disabled:opacity-30 disabled:cursor-not-allowed"
                         >
-                            <option value="all">Todas las Semanas</option>
-                            {availableWeeks.map(week => (
-                                <option key={week} value={week}>{week}</option>
-                            ))}
+                            <option value="all">Semanas</option>
+                            {availableWeeks.map(week => <option key={week} value={week}>{week}</option>)}
                         </select>
                     </div>
 
                     {isAdmin && (
-                        <button onClick={onAddMore} className="btn bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm shadow-md hover:shadow-lg hover:shadow-blue-500/30 text-nowrap border-0 rounded-full px-6 py-2.5 transition-all">
+                        <button onClick={onAddMore} className="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl px-8 py-3.5 transition-all shadow-[0_0_20px_rgba(99,102,241,0.2)] hover:shadow-[0_0_30px_rgba(99,102,241,0.4)] active:scale-95 flex items-center gap-3">
                             <Plus size={18} /> Añadir Excel
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="flex gap-4 border-b border-white/20 mb-6 shrink-0 overflow-x-auto pb-2 px-1">
-                <button
-                    onClick={() => setActiveTab('overview')}
-                    className={clsx(
-                        "px-6 py-2.5 text-sm font-bold flex items-center gap-2 rounded-full transition-all whitespace-nowrap shadow-sm",
-                        activeTab === 'overview'
-                            ? "bg-blue-600 text-white shadow-blue-500/30 translate-y-[-1px]"
-                            : "bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-slate-200"
-                    )}
-                >
-                    <LayoutDashboard size={18} /> Resumen General
-                </button>
-                <button
-                    onClick={() => setActiveTab('drivers')}
-                    className={clsx(
-                        "px-6 py-2.5 text-sm font-bold flex items-center gap-2 rounded-full transition-all whitespace-nowrap shadow-sm",
-                        activeTab === 'drivers'
-                            ? "bg-blue-600 text-white shadow-blue-500/30 translate-y-[-1px]"
-                            : "bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-slate-200"
-                    )}
-                >
-                    <Truck size={18} /> Conductores
-                </button>
-                <button
-                    onClick={() => setActiveTab('clients')}
-                    className={clsx(
-                        "px-6 py-2.5 text-sm font-bold flex items-center gap-2 rounded-full transition-all whitespace-nowrap shadow-sm",
-                        activeTab === 'clients'
-                            ? "bg-amber-500 text-white shadow-amber-500/30 translate-y-[-1px]"
-                            : "bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-slate-200"
-                    )}
-                >
-                    <Users size={18} /> Clientes
-                </button>
-                <div className="w-px h-8 bg-slate-300 mx-2 self-center"></div>
-                <button
-                    onClick={() => setActiveTab('comparison')}
-                    className={clsx(
-                        "px-6 py-2.5 text-sm font-bold flex items-center gap-2 rounded-full transition-all whitespace-nowrap shadow-sm",
-                        activeTab === 'comparison'
-                            ? "bg-indigo-600 text-white shadow-indigo-500/30 translate-y-[-1px]"
-                            : "bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-slate-200"
-                    )}
-                >
-                    <BarChart2 size={18} /> Comparativa
-                </button>
+            {/* Navigation Tabs */}
+            <div className="flex bg-black/20 p-1.5 rounded-full w-fit mb-8 border border-white/5">
+                {[
+                    { id: 'overview', label: 'Resumen Global', icon: LayoutDashboard },
+                    { id: 'drivers', label: 'Conductores', icon: Truck },
+                    { id: 'clients', label: 'Clientes', icon: Users }
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={clsx(
+                            "flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-wider transition-all",
+                            activeTab === tab.id
+                                ? "bg-white text-black shadow-xl"
+                                : "text-slate-400 hover:text-white hover:bg-white/5"
+                        )}
+                    >
+                        <tab.icon size={16} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
+                        <span className="hidden sm:inline">{tab.label}</span>
+                    </button>
+                ))}
             </div>
 
-            {/* Content Area - Scrollable */}
-            <div className="flex-1 overflow-y-auto min-h-0 pr-2 custom-scrollbar pb-10">
-
-                {/* VIEW: OVERVIEW */}
+            {/* Content Area */}
+            <div className="space-y-8 animate-fade-in pb-10">
                 {activeTab === 'overview' && (
-                    <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div className="space-y-8 animate-fade-in">
                         {/* Stats Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                             <StatCard title="Facturación Total" value={formatCurrency(summary.total)} icon={DollarSign} color="success" />
-                            <StatCard title="Conductores Activos" value={Object.keys(summary.byDriver).length} icon={Truck} color="primary" />
-                            <StatCard title="Clientes Totales" value={Object.keys(summary.byClient).length} icon={Users} color="warning" />
-                            <StatCard title="Periodos Cargados" value={Object.keys(summary.byMonth).length} icon={Calendar} color="accent" />
+                            <StatCard title="Conductores" value={Object.keys(summary.byDriver).length} icon={Truck} color="primary" />
+                            <StatCard title="Clientes" value={Object.keys(summary.byClient).length} icon={Users} color="warning" />
+                            <StatCard title="Meses Activos" value={Object.keys(summary.byMonth).length} icon={Calendar} color="accent" />
                         </div>
 
-                        {/* Breakdowns Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Monthly Breakdown with Bars */}
-                            <div className="bg-white rounded-xl border border-slate-200 border-t-4 border-t-blue-400 shadow-sm p-6">
-                                <h3 className="text-base font-bold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-100 pb-2">
-                                    <Calendar className="text-blue-500" size={20} /> Facturación por Mes
+                        {/* Charts Area */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="glass-card p-8">
+                                <h3 className="text-lg font-black text-white uppercase tracking-tight mb-6 flex items-center gap-3">
+                                    <div className="w-1 h-5 bg-indigo-500 rounded-full"></div> Facturación Mensual
                                 </h3>
-                                <div className="space-y-4">
-                                    {Object.entries(summary.byMonth).map(([month, total]) => (
-                                        <div key={month} className="group">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="capitalize text-slate-600 font-medium text-sm">{month}</span>
-                                                <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(total)}</span>
+                                <div className="space-y-5">
+                                    {Object.entries(summary.byMonth)
+                                        .sort((a, b) => {
+                                            if (a[0] === 'Sin Fecha') return 1;
+                                            if (b[0] === 'Sin Fecha') return -1;
+                                            // Usar monthIndex directamente de los datos procesados si estuviera fuera, 
+                                            // pero aquí tenemos que buscarlo o inferirlo.
+                                            // Como ayuda, intentamos extraer YYYY-MM del nombre o buscar el primer item.
+                                            const itemA = filteredData.find(r => r.month === a[0]);
+                                            const itemB = filteredData.find(r => r.month === b[0]);
+                                            return (itemA?.monthIndex || '').localeCompare(itemB?.monthIndex || '');
+                                        })
+                                        .map(([month, total]) => (
+                                            <div key={month} className="group">
+                                                <div className="flex justify-between items-end mb-1.5">
+                                                    <span className="capitalize text-slate-400 font-bold text-xs tracking-wider">{month}</span>
+                                                    <span className="font-mono font-bold text-white text-xs">{formatCurrency(total)}</span>
+                                                </div>
+                                                <DataBar value={total} max={summary.total} />
                                             </div>
-                                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-blue-500 rounded-full"
-                                                    style={{ width: `${Math.max(5, (total / summary.total) * 100 * 2)}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    {Object.keys(summary.byMonth).length === 1 && Object.keys(summary.byMonth)[0] !== 'Sin Fecha' && (
+                                        <p className="text-slate-500 text-[10px] mt-4 italic border-t border-white/5 pt-4">
+                                            Tip: Si solo ves un mes, limpia la base de datos y vuelve a subir el Excel con el nuevo formato.
+                                        </p>
+                                    )}
+                                    {Object.keys(summary.byMonth).length === 0 && (
+                                        <p className="text-slate-500 text-xs italic">No hay datos disponibles.</p>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Weekly Breakdown with Bars */}
-                            <div className="bg-white rounded-xl border border-slate-200 border-t-4 border-t-indigo-400 shadow-sm p-6">
-                                <h3 className="text-base font-bold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-100 pb-2">
-                                    <Calendar className="text-indigo-500" size={20} /> Facturación por Semana
+                            <div className="glass-card p-8">
+                                <h3 className="text-lg font-black text-white uppercase tracking-tight mb-6 flex items-center gap-3">
+                                    <div className="w-1 h-5 bg-blue-500 rounded-full"></div> Facturación Semanal
                                 </h3>
-                                <div className="space-y-4">
+                                <div className="space-y-5 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                                     {Object.entries(summary.byWeek)
-                                        .sort((a, b) => {
-                                            // Extract numbers from "Semana X"
-                                            const numA = parseInt(a[0].replace(/\D/g, '')) || 0;
-                                            const numB = parseInt(b[0].replace(/\D/g, '')) || 0;
-                                            return numA - numB;
-                                        })
+                                        .sort((a, b) => (parseInt(a[0].replace(/\D/g, '')) || 0) - (parseInt(b[0].replace(/\D/g, '')) || 0))
                                         .map(([week, total]) => (
                                             <div key={week} className="group">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <span className="text-slate-600 font-medium text-sm">{week}</span>
-                                                    <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(total)}</span>
+                                                <div className="flex justify-between items-end mb-1.5">
+                                                    <span className="text-slate-400 font-bold text-xs tracking-wider">{week}</span>
+                                                    <span className="font-mono font-bold text-white text-xs">{formatCurrency(total)}</span>
                                                 </div>
-                                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-indigo-500 rounded-full"
-                                                        style={{ width: `${Math.max(5, (total / summary.total) * 100 * 5)}%` }}
-                                                    />
-                                                </div>
+                                                <DataBar value={total} max={summary.total} colorClass="bg-blue-500" />
                                             </div>
                                         ))}
+                                    {Object.keys(summary.byWeek).length === 0 && (
+                                        <p className="text-slate-500 text-xs italic">No hay datos disponibles.</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* VIEW: DRIVERS (LIST TABLE) */}
                 {activeTab === 'drivers' && (
-                    <div className="bg-white rounded-xl border border-slate-200 border-t-4 border-t-blue-500 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-700 uppercase tracking-wider text-sm flex items-center gap-2">
-                                <Truck size={18} className="text-blue-600" /> Listado de Conductores
+                    <div className="animate-fade-in glass-card overflow-hidden flex flex-col h-[600px]">
+                        <div className="p-6 border-b border-white/5 bg-white/2 shrink-0">
+                            <h3 className="text-sm font-black text-white uppercase tracking-tighter flex justify-between items-center">
+                                Ranking Conductores
+                                <span className="text-[9px] text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-lg">Top 10</span>
                             </h3>
-                            <span className="bg-white px-2 py-1 text-xs font-bold text-slate-500 rounded border border-slate-200">{Object.keys(summary.byDriver).length} Registros</span>
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm text-slate-600">
-                                <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-semibold border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-6 py-4">Conductor</th>
-                                        <th className="px-6 py-4 text-center">Órdenes Realizadas</th>
-                                        <th className="px-6 py-4 text-right">Facturado Total</th>
-                                        <th className="px-6 py-4 text-center w-24">Estado</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
+                        <div className="overflow-y-auto flex-1 custom-scrollbar p-0">
+                            <table className="w-full">
+                                <tbody>
                                     {Object.entries(summary.byDriver)
                                         .sort((a, b) => b[1].total - a[1].total)
-                                        .map(([driver, data], index) => (
-                                            <tr key={driver} className="hover:bg-blue-50/50 transition-colors group">
-                                                <td className="px-6 py-4 font-medium text-slate-900 relative">
-                                                    {index < 3 && (
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-yellow-500 mr-1">★</span>
-                                                    )}
-                                                    <span className={index < 3 ? "ml-4" : ""}>{driver}</span>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 group-hover:bg-blue-100 group-hover:text-blue-800 transition-colors">
-                                                        {data.count}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-right font-mono font-bold text-emerald-600 group-hover:scale-105 transition-transform origin-right">
-                                                    {formatCurrency(data.total)}
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-blue-500 rounded-full"
-                                                            style={{ width: `${Math.min(100, (data.total / Object.values(summary.byDriver)[0].total) * 100)}%` }}
-                                                        />
+                                        .slice(0, 10)
+                                        .map(([driver, data], idx) => (
+                                            <tr key={driver} className="hover:bg-white/[0.03] transition-colors border-b border-white/5 last:border-0">
+                                                <td className="pl-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-white font-bold text-sm truncate max-w-[150px]">{driver}</span>
+                                                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{data.count} viajes</span>
                                                     </div>
+                                                </td>
+                                                <td className="pr-6 text-right">
+                                                    <span className="font-mono font-black text-indigo-400 text-sm">
+                                                        {formatCurrency(data.total)}
+                                                    </span>
                                                 </td>
                                             </tr>
                                         ))}
@@ -375,51 +367,32 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                     </div>
                 )}
 
-                {/* VIEW: CLIENTS (LIST TABLE) */}
                 {activeTab === 'clients' && (
-                    <div className="bg-white rounded-xl border border-slate-200 border-t-4 border-t-amber-500 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-700 uppercase tracking-wider text-sm flex items-center gap-2">
-                                <Users size={18} className="text-amber-600" /> Listado de Clientes
+                    <div className="animate-fade-in glass-card overflow-hidden flex flex-col h-[600px]">
+                        <div className="p-6 border-b border-white/5 bg-white/2 shrink-0">
+                            <h3 className="text-sm font-black text-white uppercase tracking-tighter flex justify-between items-center">
+                                Ranking Clientes
+                                <span className="text-[9px] text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg">Top 10</span>
                             </h3>
-                            <span className="bg-white px-2 py-1 text-xs font-bold text-slate-500 rounded border border-slate-200">{Object.keys(summary.byClient).length} Registros</span>
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm text-slate-600">
-                                <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-semibold border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-6 py-4">Cliente</th>
-                                        <th className="px-6 py-4 text-center">Órdenes Realizadas</th>
-                                        <th className="px-6 py-4 text-right">Facturado Total</th>
-                                        <th className="px-6 py-4 text-center w-24">Estado</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
+                        <div className="overflow-y-auto flex-1 custom-scrollbar p-0">
+                            <table className="w-full">
+                                <tbody>
                                     {Object.entries(summary.byClient)
                                         .sort((a, b) => b[1].total - a[1].total)
-                                        .map(([client, data], index) => (
-                                            <tr key={client} className="hover:bg-amber-50/50 transition-colors group">
-                                                <td className="px-6 py-4 font-medium text-slate-900 relative">
-                                                    {index < 3 && (
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-yellow-500 mr-1">★</span>
-                                                    )}
-                                                    <span className={index < 3 ? "ml-4" : ""}>{client}</span>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 group-hover:bg-amber-100 group-hover:text-amber-800 transition-colors">
-                                                        {data.count}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-right font-mono font-bold text-emerald-600 group-hover:scale-105 transition-transform origin-right">
-                                                    {formatCurrency(data.total)}
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-amber-500 rounded-full"
-                                                            style={{ width: `${Math.min(100, (data.total / Object.values(summary.byClient)[0].total) * 100)}%` }}
-                                                        />
+                                        .slice(0, 10)
+                                        .map(([client, data]) => (
+                                            <tr key={client} className="hover:bg-white/[0.03] transition-colors border-b border-white/5 last:border-0">
+                                                <td className="pl-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-white font-bold text-sm truncate max-w-[300px]" title={client}>{client}</span>
+                                                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{data.count} servicios</span>
                                                     </div>
+                                                </td>
+                                                <td className="pr-6 text-right">
+                                                    <span className="font-mono font-black text-blue-400 text-sm">
+                                                        {formatCurrency(data.total)}
+                                                    </span>
                                                 </td>
                                             </tr>
                                         ))}
@@ -428,12 +401,6 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                         </div>
                     </div>
                 )}
-
-                {/* VIEW: COMPARISON */}
-                {activeTab === 'comparison' && (
-                    <Comparison data={filteredData} />
-                )}
-
             </div>
         </div>
     );
