@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { processBillingData } from '../utils/billing';
-import { Users, Truck, DollarSign, Calendar, Filter, Plus, LayoutDashboard, BarChart2, Globe } from 'lucide-react';
+import { Users, Truck, DollarSign, Calendar, Filter, Plus, LayoutDashboard, BarChart2, Globe, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
