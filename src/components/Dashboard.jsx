@@ -79,8 +79,10 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
             }
         });
         return Array.from(weeks).sort((a, b) => {
-            const numA = parseInt(a.match(/Semana (\d+)/)?.[1] || 0);
-            const numB = parseInt(b.match(/Semana (\d+)/)?.[1] || 0);
+            const strA = String(a || '');
+            const strB = String(b || '');
+            const numA = parseInt(strA.match(/Semana (\d+)/)?.[1] || strA.replace(/\D/g, '') || 0);
+            const numB = parseInt(strB.match(/Semana (\d+)/)?.[1] || strB.replace(/\D/g, '') || 0);
             return numA - numB;
         });
     }, [rawData, selectedMonth, currentDepartment, selectedClient]);
@@ -313,7 +315,7 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                                 </h3>
                                 <div className="space-y-5 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                                     {Object.entries(summary.byWeek)
-                                        .sort((a, b) => (parseInt(a[0].replace(/\D/g, '')) || 0) - (parseInt(b[0].replace(/\D/g, '')) || 0))
+                                        .sort((a, b) => (parseInt(String(a[0]).replace(/\D/g, '')) || 0) - (parseInt(String(b[0]).replace(/\D/g, '')) || 0))
                                         .map(([week, total]) => (
                                             <div key={week} className="group">
                                                 <div className="flex justify-between items-end mb-1.5">

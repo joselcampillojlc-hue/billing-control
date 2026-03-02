@@ -117,17 +117,17 @@ export default function Comparison({ data }) {
                             <Target className="text-emerald-400 mb-4" size={32} />
                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Mayor Rendimiento</p>
                             <h4 className="text-xl font-black text-white uppercase tracking-tighter truncate">
-                                {stats.reduce((prev, curr) => (curr.total / curr.count > prev.total / prev.count) ? curr : prev).name}
+                                {stats.length > 0 ? stats.reduce((prev, curr) => (curr.total / (curr.count || 1) > prev.total / (prev.count || 1)) ? curr : prev).name : '-'}
                             </h4>
                             <p className="text-2xl font-black text-emerald-400 mt-2">
-                                {formatCurrency(stats.reduce((prev, curr) => (curr.total / curr.count > prev.total / prev.count) ? curr : prev).total / stats.reduce((prev, curr) => (curr.total / curr.count > prev.total / prev.count) ? curr : prev).count)} <span className="text-[10px] opacity-60">avg</span>
+                                {stats.length > 0 ? formatCurrency(stats.reduce((prev, curr) => (curr.total / (curr.count || 1) > prev.total / (prev.count || 1)) ? curr : prev).total / (stats.reduce((prev, curr) => (curr.total / (curr.count || 1) > prev.total / (prev.count || 1)) ? curr : prev).count || 1)) : formatCurrency(0)} <span className="text-[10px] opacity-60">avg</span>
                             </p>
                         </div>
                         <div className="glass-card p-8 bg-blue-600/5 border-blue-500/20">
                             <TrendingUp className="text-blue-400 mb-4" size={32} />
                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Volumen Total</p>
                             <h4 className="text-xl font-black text-white uppercase tracking-tighter">Grupo Seleccionado</h4>
-                            <p className="text-2xl font-black text-blue-400 mt-2">{formatCurrency(stats.reduce((acc, curr) => acc + curr.total, 0))}</p>
+                            <p className="text-2xl font-black text-blue-400 mt-2">{formatCurrency(stats.reduce((acc, curr) => acc + (curr.total || 0), 0))}</p>
                         </div>
                     </div>
 

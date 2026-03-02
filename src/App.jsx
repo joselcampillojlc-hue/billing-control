@@ -30,6 +30,32 @@ import DataManagement from './components/DataManagement';
 import Upload from './components/Upload';
 import Comparison from './components/Comparison';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-10 bg-red-900/50 text-white rounded-xl m-10">
+          <h2 className="text-2xl font-bold mb-4">Error Fatal en Dashboard</h2>
+          <p className="font-mono text-xs">{this.state.error && this.state.error.toString()}</p>
+          <pre className="font-mono text-[10px] mt-4 opacity-70 whitespace-pre-wrap">{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Custom minimal nav button
 function NavItem({ icon: Icon, label, active, onClick }) {
   return (
@@ -306,13 +332,15 @@ function App() {
           ) : (
             <div className="flex-1 animate-fade-in-up">
               {view === 'dashboard' && (
-                <Dashboard
-                  rawData={data}
-                  currentDepartment={currentDepartment}
-                  onDepartmentChange={setCurrentDepartment}
-                  onAddMore={() => setView('upload')}
-                  isAdmin={isAdmin}
-                />
+                <ErrorBoundary>
+                  <Dashboard
+                    rawData={data}
+                    currentDepartment={currentDepartment}
+                    onDepartmentChange={setCurrentDepartment}
+                    onAddMore={() => setView('upload')}
+                    isAdmin={isAdmin}
+                  />
+                </ErrorBoundary>
               )}
 
               {view === 'comparison' && (
