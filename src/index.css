@@ -159,3 +159,14 @@ td {
 tr:last-child td {
   border-bottom: none;
 }
+
+/* Fix generic select dropdown styles */
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-weight: 500;
+}
