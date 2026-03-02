@@ -12,9 +12,9 @@ export default function Login({ onLogin }) {
         setLoading(true);
         setError(false);
 
-        const adminPass = import.meta.env.VITE_ADMIN_PASSWORD || 'Jose.Campillo19';
-        const intermodalPass = import.meta.env.VITE_INTERMODAL_PASSWORD || 'MG2026INT';
-        const nacionalPass = import.meta.env.VITE_NACIONAL_PASSWORD || 'NACMG2026';
+        const adminPass = 'Jose.Campillo19';
+        const intermodalPass = 'MG2026INT';
+        const nacionalPass = 'NACMG2026';
 
         setTimeout(() => {
             if (password === adminPass) {
