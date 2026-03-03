@@ -75,14 +75,12 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
             if (currentDepartment !== 'all' && row.department && row.department !== currentDepartment) return;
             if (selectedClient !== 'all' && row.client !== selectedClient) return;
             if (row.month && (selectedMonth === 'all' || row.month === selectedMonth)) {
-                if (row.week) weeks.add(row.week);
+                if (row.week !== undefined && row.week !== null) weeks.add(row.week);
             }
         });
         return Array.from(weeks).sort((a, b) => {
-            const strA = String(a || '');
-            const strB = String(b || '');
-            const numA = parseInt(strA.match(/Semana (\d+)/)?.[1] || strA.replace(/\D/g, '') || 0);
-            const numB = parseInt(strB.match(/Semana (\d+)/)?.[1] || strB.replace(/\D/g, '') || 0);
+            const numA = typeof a === 'number' ? a : parseInt(String(a).match(/Semana (\d+)/)?.[1] || String(a).replace(/\D/g, '') || 0);
+            const numB = typeof b === 'number' ? b : parseInt(String(b).match(/Semana (\d+)/)?.[1] || String(b).replace(/\D/g, '') || 0);
             return numA - numB;
         });
     }, [rawData, selectedMonth, currentDepartment, selectedClient]);
@@ -97,7 +95,7 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
     }, [rawData, currentDepartment]);
 
     const filteredData = useMemo(() => {
-        return rawData.filter(row => {
+        const result = rawData.filter(row => {
             if (currentDepartment !== 'all' && row.department && row.department !== currentDepartment) return false;
 
             // Usar los campos ya calculados que vienen de Firebase para evitar discrepancias
@@ -105,13 +103,15 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
             const wKey = row.week || 'S/F';
 
             if (selectedMonth !== 'all' && mKey !== selectedMonth) return false;
-            if (selectedWeek !== 'all' && wKey !== selectedWeek) return false;
+            // Force strict string comparison because wKey might be a Number (e.g., 1 instead of "1")
+            if (selectedWeek !== 'all' && String(wKey) !== String(selectedWeek)) return false;
             if (selectedClient !== 'all' && row.client !== selectedClient) return false;
             return true;
         });
+
+        return result;
     }, [rawData, currentDepartment, selectedMonth, selectedWeek, selectedClient]);
 
-    // Recalcular el resumen solo sobre los datos filtrados
     const { summary } = useMemo(() => {
         // En el dashboard, como ya están procesados, solo sumamos lo que hay
         const byDriver = {};
@@ -135,7 +135,8 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
             const m = item.month || 'Sin Fecha';
             byMonth[m] = (byMonth[m] || 0) + amt;
 
-            const w = item.week || 'S/F';
+            // Handle week grouping carefully so we stringify whatever it is
+            const w = item.week !== undefined && item.week !== null ? String(item.week) : 'S/F';
             byWeek[w] = (byWeek[w] || 0) + amt;
         });
 

@@ -12,16 +12,17 @@ export default function Login({ onLogin }) {
         setLoading(true);
         setError(false);
 
-        const adminPass = 'Jose.Campillo19';
-        const intermodalPass = 'MG2026INT';
-        const nacionalPass = 'NACMG2026';
+        const adminPass = import.meta.env.VITE_ADMIN_PASSWORD?.trim();
+        const intermodalPass = import.meta.env.VITE_INTERMODAL_PASSWORD?.trim();
+        const nacionalPass = import.meta.env.VITE_NACIONAL_PASSWORD?.trim();
 
         setTimeout(() => {
-            if (password === adminPass) {
+            const inputPass = password.trim();
+            if (inputPass === adminPass) {
                 onLogin({ role: 'admin', department: 'all' });
-            } else if (password === intermodalPass) {
+            } else if (inputPass === intermodalPass) {
                 onLogin({ role: 'user', department: 'Intermodal' });
-            } else if (password === nacionalPass) {
+            } else if (inputPass === nacionalPass) {
                 onLogin({ role: 'user', department: 'Nacional' });
             } else {
                 setError(true);
