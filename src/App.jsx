@@ -137,17 +137,52 @@ function App() {
       }
     }
 
+    console.log("App: Starting Firestore listener...");
     let q = collection(db, 'billing_records');
+
+    // Safety timeout: if after 5 seconds we are still loading, force it to false
+    const safetyTimeout = setTimeout(() => {
+      console.warn("App: Safety timeout reached. Forcing isLoadingData to false.");
+      setIsLoadingData(false);
+    }, 5000);
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const records = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      clearTimeout(safetyTimeout);
+      console.log(`App: onSnapshot fired with ${snapshot.docs.length} docs`);
+      const records = snapshot.docs.map(doc => {
+        const data = doc.data();
+
+        // Normalize week field: older records stored week as a plain number (1, 2, 3...)
+        // We need it as "Semana X - YYYY" string for filtering/display to work correctly
+        let week = data.week;
+        if (typeof week === 'number' || (typeof week === 'string' && /^\d+$/.test(week.trim()))) {
+          const weekNum = parseInt(week, 10);
+          // Extract year from monthIndex (e.g. "2026-01") or default to current year
+          const year = data.monthIndex ? data.monthIndex.substring(0, 4) : new Date().getFullYear();
+          week = `Semana ${weekNum} - ${year}`;
+        }
+
+        return {
+          id: doc.id,
+          ...data,
+          week, // override with normalized value
+        };
+      });
       setData(records);
       setIsLoadingData(false);
+    }, (error) => {
+      clearTimeout(safetyTimeout);
+      // Error handler - fires if Firestore rules block access or connection fails
+      console.error('Firestore onSnapshot error:', error);
+      setIsLoadingData(false);
+      showNotification(`Error al conectar con la base de datos: ${error.message}`, 'error', 0);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
+
 
   const showNotification = (message, type = 'info', duration = 5000) => {
     setNotification({ message, type });
@@ -175,6 +210,14 @@ function App() {
 
   const handleDataLoaded = async (processedData) => {
     setIsProcessing(true);
+    console.log("App: handleDataLoaded started with", processedData.length, "rows");
+
+    // Safety timeout for processing: 30 seconds
+    const processingTimeout = setTimeout(() => {
+      console.warn("App: Processing safety timeout reached. Forcing isProcessing to false.");
+      setIsProcessing(false);
+    }, 30000);
+
     try {
       // Split into chunks of 500 (Firestore batch limit)
       const chunks = [];
@@ -194,12 +237,14 @@ function App() {
         console.log(`Pushed batch ${index + 1}/${chunks.length}`);
       }
 
+      console.log("App: All batches committed successfully.");
       showNotification("¡Datos sincronizados correctamente!", 'success');
       setView('dashboard');
     } catch (error) {
       console.error("Firebase Sync Error:", error);
       showNotification(`Error al guardar en Firebase: ${error.message}`, 'error');
     } finally {
+      clearTimeout(processingTimeout);
       setIsProcessing(false);
     }
   };
@@ -209,13 +254,21 @@ function App() {
     setIsProcessing(true);
     try {
       const snapshot = await getDocs(collection(db, 'billing_records'));
-      const batch = writeBatch(db);
-      snapshot.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
+      const docs = snapshot.docs;
+
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+        const chunk = docs.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+
       showNotification("Base de datos formateada", 'success');
       setView('dashboard');
     } catch (e) {
-      showNotification("Error al formatear", 'error');
+      console.error("Reset Error:", e);
+      showNotification("Error al formatear: " + e.message, 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -223,16 +276,22 @@ function App() {
 
   const handleDeleteMonth = async (m) => {
     if (!confirm(`¿Estás seguro de eliminar todo el mes ${m}?`)) return;
-    const targets = data.filter(r => getMonthKey(parseDate(r['F.Carga'])) === m);
+    // Use the 'month' field directly instead of F.Carga
+    const targets = data.filter(r => r.month === m);
     if (!targets.length) return;
     setIsProcessing(true);
     try {
-      const batch = writeBatch(db);
-      targets.forEach(r => batch.delete(doc(db, 'billing_records', r.id || r.fingerprint)));
-      await batch.commit();
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
+        const chunk = targets.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(r => batch.delete(doc(db, 'billing_records', r.id || r.fingerprint)));
+        await batch.commit();
+      }
       showNotification(`Registros de ${m} eliminados`, 'success');
     } catch (e) {
-      showNotification("Error al eliminar", 'error');
+      console.error("Delete Month Error:", e);
+      showNotification("Error al eliminar registros del mes", 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -240,16 +299,22 @@ function App() {
 
   const handleDeleteWeek = async (w) => {
     if (!confirm(`¿Estás seguro de eliminar la semana ${w}?`)) return;
-    const targets = data.filter(r => getWeekKey(parseDate(r['F.Carga'])) === w);
+    // Use the 'week' field directly instead of F.Carga
+    const targets = data.filter(r => r.week === w);
     if (!targets.length) return;
     setIsProcessing(true);
     try {
-      const batch = writeBatch(db);
-      targets.forEach(r => batch.delete(doc(db, 'billing_records', r.id || r.fingerprint)));
-      await batch.commit();
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
+        const chunk = targets.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(r => batch.delete(doc(db, 'billing_records', r.id || r.fingerprint)));
+        await batch.commit();
+      }
       showNotification(`Registros de la semana ${w} eliminados`, 'success');
     } catch (e) {
-      showNotification("Error al eliminar", 'error');
+      console.error("Delete Week Error:", e);
+      showNotification("Error al eliminar registros de la semana", 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -368,6 +433,13 @@ function App() {
           )}
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="w-full border-t border-white/5 bg-black/40 backdrop-blur-xl py-4 px-6 flex items-center justify-center">
+        <p className="text-[11px] text-slate-500 font-medium tracking-widest uppercase">
+          © {new Date().getFullYear()} Jose Luis Campillo · Todos los derechos reservados
+        </p>
+      </footer>
     </div>
   );
 }

@@ -4,12 +4,14 @@ import { es } from 'date-fns/locale';
 import { parseDate, getWeekKey, getMonthKey } from './dateUtils';
 
 // Map user's headers to internal keys
+// 'amount'        = TOT+ADDONS (importe conductor, columna antigua "Euros")
+// 'billingAmount' = EUROS (nuevo importe de facturación al cliente)
 const FIELD_MAP = {
   date: ['F.Carga', 'Fecha', 'F. Carga', 'FEC. CARGA', 'F carga'],
   driver: ['Conductor', 'Nombre Conductor', 'CHOFER', 'CONDUCTOR', 'chofer'],
   clientName: ['Nombre Cliente', 'Nomb.Cliente', 'Cliente', 'CLIENTE', 'cliente'],
-  amount: ['Euros', 'Importe', 'Total', 'EUROS', 'EURO', 'euros'],
-  kms: ['Kms', 'KM', 'Kilómetros', 'KILOMETROS', 'km']
+  amount: ['TOT+ADDONS', 'TOT ADDONS', 'TOTADDONS', 'Imp. Conductor', 'IMP CONDUCTOR'],
+  billingAmount: ['EUROS', 'Euros', 'Importe', 'Total', 'IMP. FACTURACION', 'Imp. Facturacion', 'Facturacion']
 };
 
 // Helper to normalize strings for comparison (remove accents, spaces, special chars)
@@ -36,8 +38,9 @@ const parseSpanishAmount = (val) => {
 
 /**
  * Finds the correct key in the row object regardless of case or slight variations.
+ * For 'billingAmount', we skip headers that already matched 'amount' to avoid overlap.
  */
-const getFieldValue = (row, fieldKey) => {
+const getFieldValue = (row, fieldKey, usedKeys = []) => {
   if (row[fieldKey] !== undefined) return row[fieldKey];
 
   const possibleHeaders = FIELD_MAP[fieldKey] || [];
@@ -47,7 +50,7 @@ const getFieldValue = (row, fieldKey) => {
 
   for (const key of rowKeys) {
     const normKey = normalize(key);
-    if (normalizedPossible.includes(normKey)) {
+    if (normalizedPossible.includes(normKey) && !usedKeys.includes(key)) {
       return row[key];
     }
   }
@@ -88,10 +91,15 @@ export const processBillingData = (data) => {
     const rawDate = getFieldValue(row, 'date');
     const dateObj = parseDate(rawDate);
 
-    // Si la fecha no es válida, no usamos hoy, sino null
     const isInvalid = !dateObj;
 
+    // Detect which key matched 'amount' so billingAmount doesn't reuse it
+    const amountHeaders = FIELD_MAP.amount.map(normalize);
+    const rowKeys = Object.keys(row);
+    const usedAmountKey = rowKeys.find(k => amountHeaders.includes(normalize(k)));
+
     const amount = parseSpanishAmount(getFieldValue(row, 'amount'));
+    const billingAmount = parseSpanishAmount(getFieldValue(row, 'billingAmount', usedAmountKey ? [usedAmountKey] : []));
     const driver = getFieldValue(row, 'driver') || 'Desconocido';
     const client = getFieldValue(row, 'clientName') || 'Desconocido';
 
@@ -111,7 +119,8 @@ export const processBillingData = (data) => {
       week: isInvalid ? 'S/F' : getWeekKey(dateObj),
       month: isInvalid ? 'Sin Fecha' : getMonthKey(dateObj),
       monthIndex: dateObj ? format(dateObj, 'yyyy-MM') : '0000-00',
-      amount: amount,
+      amount: amount,           // TOT+ADDONS (importe conductor)
+      billingAmount: billingAmount, // EUROS (importe facturación)
       raw: row
     };
   });
@@ -123,18 +132,22 @@ export const processBillingData = (data) => {
   const byWeek = {};
 
   let totalAmount = 0;
+  let totalBilling = 0;
 
   processed.forEach(item => {
     totalAmount += item.amount;
+    totalBilling += item.billingAmount;
 
     // Driver Grouping
-    if (!byDriver[item.driver]) byDriver[item.driver] = { total: 0, count: 0 };
+    if (!byDriver[item.driver]) byDriver[item.driver] = { total: 0, billing: 0, count: 0 };
     byDriver[item.driver].total += item.amount;
+    byDriver[item.driver].billing += item.billingAmount;
     byDriver[item.driver].count += 1;
 
     // Client Grouping
-    if (!byClient[item.client]) byClient[item.client] = { total: 0, count: 0 };
+    if (!byClient[item.client]) byClient[item.client] = { total: 0, billing: 0, count: 0 };
     byClient[item.client].total += item.amount;
+    byClient[item.client].billing += item.billingAmount;
     byClient[item.client].count += 1;
 
     // Time Grouping (Global)
@@ -152,6 +165,7 @@ export const processBillingData = (data) => {
     raw: processed,
     summary: {
       total: totalAmount,
+      totalBilling,
       byDriver,
       byClient,
       byMonth,
@@ -169,15 +183,15 @@ export const downloadTemplate = () => {
       'F.Carga': '01/01/2024',
       'Conductor': 'JUAN PEREZ',
       'Nombre Cliente': 'CLIENTE EJEMPLO SL',
-      'Euros': 150.50,
-      'Kms': 45
+      'Euros': 180.00,
+      'TOT+ADDONS': 150.50
     },
     {
       'F.Carga': '02/01/2024',
       'Conductor': 'ANTONIO RUIZ',
       'Nombre Cliente': 'CLIENTE TEST SL',
-      'Euros': 210.00,
-      'Kms': 120
+      'Euros': 250.00,
+      'TOT+ADDONS': 210.00
     }
   ];
 

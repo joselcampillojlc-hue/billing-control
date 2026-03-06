@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { processBillingData } from '../utils/billing';
-import { Users, Truck, DollarSign, Calendar, Filter, Plus, LayoutDashboard, BarChart2, Globe, AlertTriangle } from 'lucide-react';
+import { Users, Truck, DollarSign, Calendar, Filter, Plus, LayoutDashboard, BarChart2, Globe, AlertTriangle, Download } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Comparison from './Comparison';
 import { parseDate, getWeekKey, getMonthKey } from '../utils/dateUtils';
+import { exportDataToPDF } from '../utils/pdfExport';
 
 function StatCard({ title, value, icon: Icon, color }) {
     const accents = {
@@ -113,38 +114,71 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
     }, [rawData, currentDepartment, selectedMonth, selectedWeek, selectedClient]);
 
     const { summary } = useMemo(() => {
-        // En el dashboard, como ya están procesados, solo sumamos lo que hay
         const byDriver = {};
         const byClient = {};
         const byMonth = {};
         const byWeek = {};
         let total = 0;
+        let totalBilling = 0;
 
         filteredData.forEach(item => {
             const amt = item.amount || 0;
+            const bill = item.billingAmount || 0;
             total += amt;
+            totalBilling += bill;
 
-            if (!byDriver[item.driver]) byDriver[item.driver] = { total: 0, count: 0 };
+            if (!byDriver[item.driver]) byDriver[item.driver] = { total: 0, billing: 0, count: 0 };
             byDriver[item.driver].total += amt;
+            byDriver[item.driver].billing += bill;
             byDriver[item.driver].count += 1;
 
-            if (!byClient[item.client]) byClient[item.client] = { total: 0, count: 0 };
+            if (!byClient[item.client]) byClient[item.client] = { total: 0, billing: 0, count: 0 };
             byClient[item.client].total += amt;
+            byClient[item.client].billing += bill;
             byClient[item.client].count += 1;
 
             const m = item.month || 'Sin Fecha';
             byMonth[m] = (byMonth[m] || 0) + amt;
 
-            // Handle week grouping carefully so we stringify whatever it is
             const w = item.week !== undefined && item.week !== null ? String(item.week) : 'S/F';
             byWeek[w] = (byWeek[w] || 0) + amt;
         });
 
-        return { summary: { total, byDriver, byClient, byMonth, byWeek } };
+        return { summary: { total, totalBilling, byDriver, byClient, byMonth, byWeek } };
     }, [filteredData]);
 
     const formatCurrency = (amount) =>
         new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
+
+    const handleExportDrivers = () => {
+        const data = Object.entries(summary.byDriver)
+            .sort((a, b) => b[1].total - a[1].total)
+            .map(([driver, d]) => ({ driver, count: d.count, billing: d.billing || 0, total: d.total }));
+
+        const columns = [
+            { key: 'driver', label: 'Conductor', align: 'left' },
+            { key: 'count', label: 'Viajes', align: 'center', width: 25 },
+            { key: 'billing', label: 'Euros', align: 'right', format: 'currency', width: 40 },
+            { key: 'total', label: 'TOT+ADDONS', align: 'right', format: 'currency', width: 40 }
+        ];
+
+        exportDataToPDF('Ranking de Conductores', columns, data, 'Ranking_Conductores');
+    };
+
+    const handleExportClients = () => {
+        const data = Object.entries(summary.byClient)
+            .sort((a, b) => b[1].total - a[1].total)
+            .map(([client, d]) => ({ client, count: d.count, billing: d.billing || 0, total: d.total }));
+
+        const columns = [
+            { key: 'client', label: 'Cliente', align: 'left' },
+            { key: 'count', label: 'Servicios', align: 'center', width: 25 },
+            { key: 'billing', label: 'Euros', align: 'right', format: 'currency', width: 40 },
+            { key: 'total', label: 'TOT+ADDONS', align: 'right', format: 'currency', width: 40 }
+        ];
+
+        exportDataToPDF('Ranking de Clientes', columns, data, 'Ranking_Clientes');
+    };
 
     return (
         <div className="flex flex-col h-full space-y-8 pb-10">
@@ -266,10 +300,10 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                     <div className="space-y-8 animate-fade-in">
                         {/* Stats Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                            <StatCard title="Facturación Total" value={formatCurrency(summary.total)} icon={DollarSign} color="success" />
+                            <StatCard title="Euros" value={formatCurrency(summary.totalBilling)} icon={DollarSign} color="accent" />
+                            <StatCard title="TOT+ADDONS" value={formatCurrency(summary.total)} icon={DollarSign} color="success" />
                             <StatCard title="Conductores" value={Object.keys(summary.byDriver).length} icon={Truck} color="primary" />
                             <StatCard title="Clientes" value={Object.keys(summary.byClient).length} icon={Users} color="warning" />
-                            <StatCard title="Meses Activos" value={Object.keys(summary.byMonth).length} icon={Calendar} color="accent" />
                         </div>
 
                         {/* Charts Area */}
@@ -336,20 +370,37 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                 )}
 
                 {activeTab === 'drivers' && (
-                    <div className="animate-fade-in glass-card overflow-hidden flex flex-col h-[600px]">
+                    <div id="drivers-export-content" className="animate-fade-in glass-card overflow-hidden flex flex-col h-[600px]">
                         <div className="p-6 border-b border-white/5 bg-white/2 shrink-0">
-                            <h3 className="text-sm font-black text-white uppercase tracking-tighter flex justify-between items-center">
-                                Ranking Conductores
-                                <span className="text-[9px] text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-lg">Top 10</span>
-                            </h3>
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-sm font-black text-white uppercase tracking-tighter flex items-center gap-3">
+                                    Ranking Conductores
+                                    <span className="text-[9px] text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-lg">Top 10</span>
+                                </h3>
+                                <button
+                                    onClick={handleExportDrivers}
+                                    className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors group flex items-center gap-2"
+                                    title="Exportar a PDF"
+                                >
+                                    <Download size={16} className="group-hover:scale-110 transition-transform" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Exportar</span>
+                                </button>
+                            </div>
                         </div>
                         <div className="overflow-y-auto flex-1 custom-scrollbar p-0">
                             <table className="w-full">
+                                <thead className="sticky top-0 bg-black/60 backdrop-blur-sm">
+                                    <tr>
+                                        <th className="pl-6 py-3 text-left text-[9px] font-black uppercase tracking-widest text-slate-500">Conductor</th>
+                                        <th className="px-4 py-3 text-right text-[9px] font-black uppercase tracking-widest text-emerald-400">Euros</th>
+                                        <th className="pr-6 py-3 text-right text-[9px] font-black uppercase tracking-widest text-indigo-400">TOT+ADDONS</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
                                     {Object.entries(summary.byDriver)
                                         .sort((a, b) => b[1].total - a[1].total)
                                         .slice(0, 10)
-                                        .map(([driver, data], idx) => (
+                                        .map(([driver, data]) => (
                                             <tr key={driver} className="hover:bg-white/[0.03] transition-colors border-b border-white/5 last:border-0">
                                                 <td className="pl-6 py-4">
                                                     <div className="flex flex-col">
@@ -357,10 +408,11 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                                                         <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{data.count} viajes</span>
                                                     </div>
                                                 </td>
-                                                <td className="pr-6 text-right">
-                                                    <span className="font-mono font-black text-indigo-400 text-sm">
-                                                        {formatCurrency(data.total)}
-                                                    </span>
+                                                <td className="px-4 py-4 text-right">
+                                                    <span className="font-mono font-black text-emerald-400 text-sm">{formatCurrency(data.billing || 0)}</span>
+                                                </td>
+                                                <td className="pr-6 py-4 text-right">
+                                                    <span className="font-mono font-black text-indigo-400 text-sm">{formatCurrency(data.total)}</span>
                                                 </td>
                                             </tr>
                                         ))}
@@ -371,15 +423,32 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                 )}
 
                 {activeTab === 'clients' && (
-                    <div className="animate-fade-in glass-card overflow-hidden flex flex-col h-[600px]">
+                    <div id="clients-export-content" className="animate-fade-in glass-card overflow-hidden flex flex-col h-[600px]">
                         <div className="p-6 border-b border-white/5 bg-white/2 shrink-0">
-                            <h3 className="text-sm font-black text-white uppercase tracking-tighter flex justify-between items-center">
-                                Ranking Clientes
-                                <span className="text-[9px] text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg">Top 10</span>
-                            </h3>
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-sm font-black text-white uppercase tracking-tighter flex items-center gap-3">
+                                    Ranking Clientes
+                                    <span className="text-[9px] text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg">Top 10</span>
+                                </h3>
+                                <button
+                                    onClick={handleExportClients}
+                                    className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors group flex items-center gap-2"
+                                    title="Exportar a PDF"
+                                >
+                                    <Download size={16} className="group-hover:scale-110 transition-transform" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Exportar</span>
+                                </button>
+                            </div>
                         </div>
                         <div className="overflow-y-auto flex-1 custom-scrollbar p-0">
                             <table className="w-full">
+                                <thead className="sticky top-0 bg-black/60 backdrop-blur-sm">
+                                    <tr>
+                                        <th className="pl-6 py-3 text-left text-[9px] font-black uppercase tracking-widest text-slate-500">Cliente</th>
+                                        <th className="px-4 py-3 text-right text-[9px] font-black uppercase tracking-widest text-emerald-400">Euros</th>
+                                        <th className="pr-6 py-3 text-right text-[9px] font-black uppercase tracking-widest text-indigo-400">TOT+ADDONS</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
                                     {Object.entries(summary.byClient)
                                         .sort((a, b) => b[1].total - a[1].total)
@@ -388,14 +457,15 @@ export default function Dashboard({ rawData, currentDepartment, onDepartmentChan
                                             <tr key={client} className="hover:bg-white/[0.03] transition-colors border-b border-white/5 last:border-0">
                                                 <td className="pl-6 py-4">
                                                     <div className="flex flex-col">
-                                                        <span className="text-white font-bold text-sm truncate max-w-[300px]" title={client}>{client}</span>
+                                                        <span className="text-white font-bold text-sm truncate max-w-[200px]" title={client}>{client}</span>
                                                         <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{data.count} servicios</span>
                                                     </div>
                                                 </td>
-                                                <td className="pr-6 text-right">
-                                                    <span className="font-mono font-black text-blue-400 text-sm">
-                                                        {formatCurrency(data.total)}
-                                                    </span>
+                                                <td className="px-4 py-4 text-right">
+                                                    <span className="font-mono font-black text-emerald-400 text-sm">{formatCurrency(data.billing || 0)}</span>
+                                                </td>
+                                                <td className="pr-6 py-4 text-right">
+                                                    <span className="font-mono font-black text-blue-400 text-sm">{formatCurrency(data.total)}</span>
                                                 </td>
                                             </tr>
                                         ))}

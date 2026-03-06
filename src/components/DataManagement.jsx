@@ -1,36 +1,39 @@
-import React, { useMemo } from 'react';
-import { Trash2, Calendar, AlertTriangle, RefreshCw, X, Database } from 'lucide-react';
+﻿import React, { useMemo } from 'react';
+import { Trash2, Calendar, AlertTriangle, RefreshCw, Database } from 'lucide-react';
 import { formatCurrency } from '../utils/format';
-import { parseDate, getMonthKey, getWeekKey } from '../utils/dateUtils';
 import { clsx } from 'clsx';
 
 export default function DataManagement({ rawData, onDeleteMonth, onDeleteWeek, onReset, isAdmin }) {
+    // Use pre-computed fields (month, week, amount, billingAmount) already stored in Firestore
+    // Do NOT re-parse from 'F.Carga' which doesn't exist at the top level of Firestore docs
     const months = useMemo(() => {
         const groups = {};
         rawData.forEach(row => {
-            const dateObj = parseDate(row['F.Carga']);
-            if (dateObj) {
-                const key = getMonthKey(dateObj);
-                if (!groups[key]) groups[key] = { total: 0, count: 0 };
-                groups[key].total += parseFloat(row['Imp. Conductor'] || 0);
-                groups[key].count += 1;
-            }
+            const key = row.month;
+            if (!key || key === 'Sin Fecha') return;
+            if (!groups[key]) groups[key] = { total: 0, billing: 0, count: 0, monthIndex: row.monthIndex || '' };
+            groups[key].total += parseFloat(row.amount || 0);
+            groups[key].billing += parseFloat(row.billingAmount || 0);
+            groups[key].count += 1;
         });
-        return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+        return Object.entries(groups).sort((a, b) => b[1].monthIndex.localeCompare(a[1].monthIndex));
     }, [rawData]);
 
     const weeks = useMemo(() => {
         const groups = {};
         rawData.forEach(row => {
-            const dateObj = parseDate(row['F.Carga']);
-            if (dateObj) {
-                const key = getWeekKey(dateObj);
-                if (!groups[key]) groups[key] = { total: 0, count: 0 };
-                groups[key].total += parseFloat(row['Imp. Conductor'] || 0);
-                groups[key].count += 1;
-            }
+            const key = row.week;
+            if (!key || key === 'S/F') return;
+            if (!groups[key]) groups[key] = { total: 0, billing: 0, count: 0 };
+            groups[key].total += parseFloat(row.amount || 0);
+            groups[key].billing += parseFloat(row.billingAmount || 0);
+            groups[key].count += 1;
         });
-        return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+        return Object.entries(groups).sort((a, b) => {
+            const numA = parseInt(String(a[0]).match(/Semana (\d+)/)?.[1] || 0);
+            const numB = parseInt(String(b[0]).match(/Semana (\d+)/)?.[1] || 0);
+            return numB - numA;
+        });
     }, [rawData]);
 
     if (!isAdmin) {
@@ -72,9 +75,13 @@ export default function DataManagement({ rawData, onDeleteMonth, onDeleteWeek, o
                                     </div>
                                     <div>
                                         <h4 className="text-lg font-black text-white capitalize mb-1">{month}</h4>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{data.count} Registros</span>
+                                        <div className="flex items-center gap-3 flex-wrap">
+                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{data.count} Reg.</span>
                                             <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EUROS:</span>
+                                            <span className="text-xs font-mono font-bold text-emerald-400">{formatCurrency(data.billing)}</span>
+                                            <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TOT+ADDONS:</span>
                                             <span className="text-xs font-mono font-bold text-indigo-400">{formatCurrency(data.total)}</span>
                                         </div>
                                     </div>
@@ -82,7 +89,7 @@ export default function DataManagement({ rawData, onDeleteMonth, onDeleteWeek, o
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => onDeleteMonth(month)}
-                                        className="p-4 rounded-2xl bg-red-500/10 text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white shadow-lg active:scale-95"
+                                        className="p-4 rounded-2xl bg-red-500/10 text-red-400 transition-all hover:bg-red-500 hover:text-white shadow-lg active:scale-95"
                                         title="Eliminar Mes"
                                     >
                                         <Trash2 size={20} />
@@ -112,9 +119,13 @@ export default function DataManagement({ rawData, onDeleteMonth, onDeleteWeek, o
                                     </div>
                                     <div>
                                         <h4 className="text-lg font-black text-white">{week}</h4>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{data.count} Registros</span>
+                                        <div className="flex items-center gap-3 flex-wrap">
+                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{data.count} Reg.</span>
                                             <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EUROS:</span>
+                                            <span className="text-xs font-mono font-bold text-emerald-400">{formatCurrency(data.billing)}</span>
+                                            <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TOT+ADDONS:</span>
                                             <span className="text-xs font-mono font-bold text-blue-400">{formatCurrency(data.total)}</span>
                                         </div>
                                     </div>
@@ -122,7 +133,7 @@ export default function DataManagement({ rawData, onDeleteMonth, onDeleteWeek, o
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => onDeleteWeek(week)}
-                                        className="p-4 rounded-2xl bg-red-500/10 text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white shadow-lg active:scale-95"
+                                        className="p-4 rounded-2xl bg-red-500/10 text-red-400 transition-all hover:bg-red-500 hover:text-white shadow-lg active:scale-95"
                                         title="Eliminar Semana"
                                     >
                                         <Trash2 size={20} />
@@ -130,6 +141,9 @@ export default function DataManagement({ rawData, onDeleteMonth, onDeleteWeek, o
                                 </div>
                             </div>
                         ))}
+                        {weeks.length === 0 && (
+                            <p className="text-slate-600 font-black uppercase tracking-widest text-xs text-center py-10 opacity-50">No hay datos semanales</p>
+                        )}
                     </div>
                 </div>
             </div>
